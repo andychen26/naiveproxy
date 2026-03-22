@@ -31,7 +31,7 @@
 #include <algorithm>
 #endif
 
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX)
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
 #include <sys/prctl.h>
 #endif
 
@@ -59,7 +59,7 @@ inline bool MaybeSetThreadName(const std::string& name) {
 
 inline bool GetThreadName(std::string& out_result) {
   char buf[16] = {};
-#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX)
+#if PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID)
   if (prctl(PR_GET_NAME, buf) != 0)
     return false;
 #else

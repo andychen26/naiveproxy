@@ -26,10 +26,10 @@
 #include "base/containers/flat_set.h"
 #include "base/containers/lru_cache.h"
 #include "base/containers/span.h"
+#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
 #include "base/gtest_prod_util.h"
-#include "base/hash/sha1.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
@@ -40,10 +40,12 @@
 #include "net/base/cache_type.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/does_url_match_filter.h"
+#include "net/base/hash_value.h"
 #include "net/base/load_states.h"
 #include "net/base/net_errors.h"
 #include "net/base/net_export.h"
 #include "net/base/request_priority.h"
+#include "net/disk_cache/cache_encryption_delegate.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/http/http_transaction_factory.h"
 #include "net/http/no_vary_search_cache.h"
@@ -60,6 +62,8 @@ class Origin;
 }
 
 namespace net {
+
+NET_EXPORT BASE_DECLARE_FEATURE(kHttpCacheInitializeDiskCacheBackendEarly);
 
 class HttpNetworkSession;
 class HttpResponseInfo;
@@ -98,6 +102,8 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
         disk_cache::ApplicationStatusListenerGetter
             app_status_listener_getter) {}
 #endif
+
+    virtual std::optional<CacheType> GetCacheType() const;
   };
 
   // A default backend factory for the common use cases.
@@ -107,13 +113,17 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
     // TrivialFileOperationsFactory is used. `path` is the destination for any
     // files used by the backend. If `max_bytes` is  zero, a default value
     // will be calculated automatically.
+    // `cache_encryption_delegate` can be null, in which case the cache will
+    // not be encrypted. The caller must ensure that the delegate outlives the
+    // backend.
     DefaultBackend(CacheType type,
                    BackendType backend_type,
                    scoped_refptr<disk_cache::BackendFileOperationsFactory>
                        file_operations_factory,
                    const base::FilePath& path,
                    int max_bytes,
-                   bool hard_reset);
+                   bool hard_reset,
+                   net::CacheEncryptionDelegate* cache_encryption_delegate);
     ~DefaultBackend() override;
 
     // Returns a factory for an in-memory cache.
@@ -129,6 +139,8 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
                                         app_status_listener_getter) override;
 #endif
 
+    std::optional<CacheType> GetCacheType() const override;
+
    private:
     CacheType type_;
     BackendType backend_type_;
@@ -137,6 +149,7 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
     const base::FilePath path_;
     int max_bytes_;
     bool hard_reset_;
+    raw_ptr<net::CacheEncryptionDelegate> cache_encryption_delegate_;
 #if BUILDFLAG(IS_ANDROID)
     disk_cache::ApplicationStatusListenerGetter app_status_listener_getter_;
 #endif
@@ -287,13 +300,6 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
   // Generates the cache key for a request.
   static std::optional<std::string> GenerateCacheKeyForRequest(
       const HttpRequestInfo* request);
-
-  // Generates the cache key for a request, but using a different URL. This is
-  // more efficient than copying the HttpRequestInfo object and changing the
-  // URL.
-  static std::optional<std::string> GenerateCacheKeyForRequestWithAlternateURL(
-      const HttpRequestInfo* request,
-      const GURL& url);
 
   // Generates the cache partition key, which is the cache key not including the
   // URL. This does include the upload data identifier when needed.
@@ -540,7 +546,6 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
   // CanGenerateCacheKeyForRequest() returned true. Otherwise returns nullopt.
   static std::optional<std::string> GenerateCacheKeyInternal(
       const HttpRequestInfo& request,
-      const GURL& url,
       bool include_url);
 
   // Generates a cache key given the various pieces used to construct the key.
@@ -802,6 +807,7 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
   // Variables ----------------------------------------------------------------
 
   raw_ptr<NetLog> net_log_;
+  raw_ptr<net::CacheEncryptionDelegate> cache_encryption_delegate_;
 
   // Used when lazily constructing the disk_cache_.
   std::unique_ptr<BackendFactory> backend_factory_;
@@ -830,7 +836,7 @@ class NET_EXPORT HttpCache : public HttpTransactionFactory {
   raw_ptr<base::Clock> clock_;
 
   // Used to track which keys led to a no-store response.
-  base::LRUCacheSet<base::SHA1Digest> keys_marked_no_store_;
+  base::LRUCacheSet<SHA256HashValue> keys_marked_no_store_;
 
   // Set if the kHttpCacheNoVarySearch feature is enabled. Translates the URL in
   // the request into the URL of a previous response that is equivalent

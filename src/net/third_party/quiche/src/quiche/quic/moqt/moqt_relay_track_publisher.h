@@ -19,8 +19,11 @@
 #include "quiche/quic/core/quic_clock.h"
 #include "quiche/quic/core/quic_default_clock.h"
 #include "quiche/quic/core/quic_time.h"
+#include "quiche/quic/moqt/moqt_error.h"
 #include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
+#include "quiche/quic/moqt/moqt_names.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_priority.h"
 #include "quiche/quic/moqt/moqt_publisher.h"
@@ -48,16 +51,12 @@ class MoqtRelayTrackPublisher : public MoqtTrackPublisher,
   MoqtRelayTrackPublisher(
       FullTrackName track, quiche::QuicheWeakPtr<MoqtSessionInterface> upstream,
       DeleteTrackCallback delete_track_callback,
-      std::optional<MoqtForwardingPreference> forwarding_preference,
-      std::optional<MoqtDeliveryOrder> delivery_order,
       std::optional<quic::QuicTime> expiration = quic::QuicTime::Infinite(),
       const quic::QuicClock* clock = quic::QuicDefaultClock::Get())
       : clock_(clock),
         track_(std::move(track)),
         upstream_(std::move(upstream)),
         delete_track_callback_(std::move(delete_track_callback)),
-        forwarding_preference_(forwarding_preference),
-        delivery_order_(delivery_order),
         expiration_(expiration),
         next_location_(0, 0) {}
 
@@ -69,14 +68,14 @@ class MoqtRelayTrackPublisher : public MoqtTrackPublisher,
   // SubscribeVisitor implementation.
   void OnReply(
       const FullTrackName& full_track_name,
-      std::variant<SubscribeOkData, MoqtRequestError> response) override;
+      std::variant<SubscribeOkData, MoqtRequestErrorInfo> response) override;
   // TODO(vasilvv): Implement this if we want to support Object Acks across
   // relays.
   void OnCanAckObjects(MoqtObjectAckFunction /*ack_function*/) override {}
   void OnObjectFragment(const FullTrackName& full_track_name,
                         const PublishedObjectMetadata& metadata,
                         absl::string_view object, bool end_of_message) override;
-  void OnPublishDone(FullTrackName /*full_track_name*/) override {}
+  void OnPublishDone(FullTrackName full_track_name) override;
   void OnMalformedTrack(const FullTrackName& /*full_track_name*/) override {
     DeleteTrack();
   }
@@ -91,13 +90,7 @@ class MoqtRelayTrackPublisher : public MoqtTrackPublisher,
   void AddObjectListener(MoqtObjectListener* listener) override;
   void RemoveObjectListener(MoqtObjectListener* listener) override;
   std::optional<Location> largest_location() const override;
-  std::optional<MoqtForwardingPreference> forwarding_preference()
-      const override {
-    return forwarding_preference_;
-  }
-  std::optional<MoqtDeliveryOrder> delivery_order() const override {
-    return delivery_order_;
-  }
+  const TrackExtensions& extensions() const override { return extensions_; }
   std::optional<quic::QuicTimeDelta> expiration() const override;
   std::unique_ptr<MoqtFetchTask> StandaloneFetch(
       Location /*start*/, Location /*end*/,
@@ -120,6 +113,8 @@ class MoqtRelayTrackPublisher : public MoqtTrackPublisher,
   void ForAllObjects(
       quiche::UnretainedCallback<void(const CachedObject&)> callback);
 
+  void Close() { is_closing_ = true; }
+
  private:
   // The number of recent groups to keep around for newly joined subscribers.
   static constexpr size_t kMaxQueuedGroups = 3;
@@ -135,12 +130,13 @@ class MoqtRelayTrackPublisher : public MoqtTrackPublisher,
     absl::btree_map<uint64_t, Subgroup> subgroups;  // Ordered by subgroup id.
   };
 
+  bool is_closing_ = false;
+  bool got_response_ = false;
   const quic::QuicClock* clock_;
   FullTrackName track_;
   quiche::QuicheWeakPtr<MoqtSessionInterface> upstream_;
   DeleteTrackCallback delete_track_callback_;
-  std::optional<MoqtForwardingPreference> forwarding_preference_;
-  std::optional<MoqtDeliveryOrder> delivery_order_;
+  TrackExtensions extensions_;
   // TODO(martinduke): This publisher should destroy itself when the expiration
   // time passes.
   std::optional<quic::QuicTime> expiration_;

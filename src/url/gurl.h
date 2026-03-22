@@ -49,8 +49,8 @@
 // See url::mojom::kMaxURLChars for more details.
 class COMPONENT_EXPORT(URL) GURL {
  public:
-  using Replacements = url::StringViewReplacements<char>;
-  using ReplacementsW = url::StringViewReplacements<char16_t>;
+  using Replacements = url::Replacements<char>;
+  using ReplacementsW = url::Replacements<char16_t>;
 
   // Creates an empty, invalid URL.
   GURL();
@@ -69,8 +69,7 @@ class COMPONENT_EXPORT(URL) GURL {
   // Constructor for URLs that have already been parsed and canonicalized. This
   // is used for conversions from KURL, for example. The caller must supply all
   // information associated with the URL, which must be correct and consistent.
-  GURL(const char* canonical_spec,
-       size_t canonical_spec_len,
+  GURL(std::string_view canonical_spec,
        const url::Parsed& parsed,
        bool is_valid);
   // Notice that we take the canonical_spec by value so that we can convert
@@ -423,7 +422,7 @@ class COMPONENT_EXPORT(URL) GURL {
   // filesystem URLs).
   //
   // TODO(mmenke): inner_url().spec() currently returns the same value as
-  // caling spec() on the GURL itself. This should be fixed.
+  // calling spec() on the GURL itself. This should be fixed.
   // See https://crbug.com/619596
   const GURL* inner_url() const {
     return inner_url_.get();
@@ -461,6 +460,10 @@ class COMPONENT_EXPORT(URL) GURL {
 
   // Helper used by IsAboutBlank and IsAboutSrcdoc.
   bool IsAboutUrl(std::string_view allowed_path) const;
+
+  // Returns a view of the first `parsed_.Length()` characters of `spec_`.
+  // It's helpful to handle a filesystem URL.
+  std::string_view ParsedSpecView() const;
 
   // Returns the substring of the input identified by the given component.
   std::string ComponentString(const url::Component& comp) const {

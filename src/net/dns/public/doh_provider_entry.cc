@@ -66,19 +66,12 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
   // DoH provider list.
   //
   // The provider names in these entries should be kept in sync with the
-  // DohProviderId histogram suffix list in
-  // tools/metrics/histograms/metadata/histogram_suffixes_list.xml.
+  // DohProviderId variant list in
+  // tools/metrics/histograms/metadata/net/histograms.xml.
+  //
+  // LINT.IfChange(DohProviderId)
   static const auto entries(base::NoDestructor(std::to_array<DohProviderEntry>(
-      {{"AlekBergNl",
-        MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(DohProviderAlekBergNl,
-                                              base::FEATURE_ENABLED_BY_DEFAULT),
-        /*dns_over_53_server_ip_strs=*/{}, /*dns_over_tls_hostnames=*/{},
-        "https://dnsnl.alekberg.net/dns-query{?dns}",
-        /*ui_name=*/"alekberg.net (NL)",
-        /*privacy_policy=*/"https://alekberg.net/privacy",
-        /*display_globally=*/false,
-        /*display_countries=*/{"NL"}, LoggingLevel::kNormal},
-       {"CleanBrowsingAdult",
+      {{"CleanBrowsingAdult",
         MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(DohProviderCleanBrowsingAdult,
                                               base::FEATURE_ENABLED_BY_DEFAULT),
         {"185.228.168.10", "185.228.169.11", "2a0d:2a00:1::1",
@@ -126,6 +119,28 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
         /*display_globally=*/true,
         /*display_countries=*/{},
         LoggingLevel::kExtra},
+       {"CloudflareFamily",
+        MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(
+            DohProviderCloudflareFamily, base::FEATURE_DISABLED_BY_DEFAULT),
+        {"1.1.1.3", "1.0.0.3", "2606:4700:4700::1113", "2606:4700:4700::1003"},
+        {"family.cloudflare-dns.com"},
+        "https://family.cloudflare-dns.com/dns-query",
+        /*ui_name=*/"",
+        /*privacy_policy=*/"",
+        /*display_globally=*/false,
+        /*display_countries=*/{},
+        LoggingLevel::kNormal},
+       {"CloudflareSecurity",
+        MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(
+            DohProviderCloudflareSecurity, base::FEATURE_DISABLED_BY_DEFAULT),
+        {"1.1.1.2", "1.0.0.2", "2606:4700:4700::1112", "2606:4700:4700::1002"},
+        {"security.cloudflare-dns.com"},
+        "https://security.cloudflare-dns.com/dns-query",
+        /*ui_name=*/"",
+        /*privacy_policy=*/"",
+        /*display_globally=*/false,
+        /*display_countries=*/{},
+        LoggingLevel::kNormal},
        {"Comcast",
         MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(DohProviderComcast,
                                               base::FEATURE_ENABLED_BY_DEFAULT),
@@ -160,6 +175,25 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
         /*display_globally=*/false,
         /*display_countries=*/{"CZ"},
         LoggingLevel::kNormal},
+       {"DNS4EU",
+        MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(DohProviderDns4eu,
+                                              base::FEATURE_ENABLED_BY_DEFAULT),
+        /*dns_over_53_server_ip_strs=*/{},
+        /*dns_over_tls_hostnames=*/{},
+        "https://protective.joindns4.eu/dns-query{?dns}",
+        /*ui_name=*/"DNS4EU Public Service (Protective)",
+        /*privacy_policy=*/
+        "https://app-eu1.hubspotdocuments.com/documents/142290803/view/"
+        "1331719984?accessId=b505d9",
+        /*display_globally=*/false,
+        /*display_countries=*/{"AT", "BE", "BG", "HR", "CY", "CZ", "DK",
+                               "EE", "FI", "FR", "DE", "GR", "HU", "IE",
+                               "IT", "LV", "LT", "LU", "MT", "NL", "PL",
+                               "PT", "RO", "SK", "SI", "ES", "SE"},
+        LoggingLevel::kNormal,
+        /*dns_over_https_server_ip_strs=*/
+        {"86.54.11.1", "86.54.11.201", "2a13:1001::86:54:11:1",
+         "2a13:1001::86:54:11:201"}},
        {"Dnssb",
         MAKE_BASE_FEATURE_WITH_STATIC_STORAGE(DohProviderDnssb,
                                               base::FEATURE_ENABLED_BY_DEFAULT),
@@ -321,6 +355,7 @@ const DohProviderEntry::List& DohProviderEntry::GetList() {
         /*display_globally=*/false,
         /*display_countries=*/{},
         LoggingLevel::kNormal}})));
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/net/histograms.xml:DohProviderId)
 
   static const base::NoDestructor<DohProviderEntry::List> providers(
       base::ToVector(*entries, [](const DohProviderEntry& entry) {

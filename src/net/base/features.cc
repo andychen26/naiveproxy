@@ -72,6 +72,8 @@ const base::FeatureParam<base::TimeDelta> kUseDnsHttpsSvcbSecureExtraTimeMin{
     &kUseDnsHttpsSvcb, "UseDnsHttpsSvcbSecureExtraTimeMin",
     base::Milliseconds(5)};
 
+BASE_FEATURE(kUseStructuredDnsErrors, base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kUseHostResolverCache, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kHappyEyeballsV3, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -114,21 +116,11 @@ BASE_FEATURE(kSplitCacheByIncludeCredentials,
 BASE_FEATURE(kSplitCacheByNetworkIsolationKey,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Note: Use of this feature is gated on the HTTP cache itself being
-// partitioned, which is controlled by the kSplitCacheByNetworkIsolationKey
-// feature.
-BASE_FEATURE(kSplitCacheByCrossSiteMainFrameNavigationBoolean,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kSplitCodeCacheByNetworkIsolationKey,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPartitionConnectionsByNetworkIsolationKey,
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kPrefixCookieHttp, base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kPrefixCookieHostHttp, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kSearchEnginePreconnectInterval,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -213,9 +205,6 @@ extern const base::FeatureParam<base::TimeDelta>
 BASE_FEATURE(kRequestStorageAccessNoCorsRequired,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kStorageAccessApiFollowsSameOriginPolicy,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kStaticKeyPinningEnforcement, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kCookieDomainRejectNonASCII, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -223,10 +212,6 @@ BASE_FEATURE(kCookieDomainRejectNonASCII, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables partitioning of third party storage (IndexedDB, CacheStorage, etc.)
 // by the top level site to reduce fingerprinting.
 BASE_FEATURE(kThirdPartyStoragePartitioning, base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kTpcdTrialSettings,
-             "TpcdSupportSettings",
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTpcdMetadataGrants, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -286,213 +271,6 @@ BASE_FEATURE(kAsyncMultiPortPath,
 #else
              base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
-
-// Probabilistic reveal tokens configuration settings
-BASE_FEATURE(kEnableProbabilisticRevealTokens,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-const base::FeatureParam<std::string> kProbabilisticRevealTokenServer{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"ProbabilisticRevealTokenServer",
-    /*default_value=*/"https://aaftokenissuer.pa.googleapis.com"};
-
-const base::FeatureParam<std::string> kProbabilisticRevealTokenServerPath{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"ProbabilisticRevealTokenServerPath",
-    /*default_value=*/"/v1/issueprts"};
-
-const base::FeatureParam<bool> kBypassProbabilisticRevealTokenRegistry{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"BypassProbabilisticRevealTokenRegistry",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kUseCustomProbabilisticRevealTokenRegistry{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"UseCustomProbabilisticRevealTokenRegistry",
-    /*default_value=*/false};
-
-const base::FeatureParam<std::string> kCustomProbabilisticRevealTokenRegistry{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"CustomProbabilisticRevealTokenRegistry",
-    /*default_value=*/""};
-
-const base::FeatureParam<bool> kProbabilisticRevealTokensOnlyInIncognito{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"ProbabilisticRevealTokensOnlyInIncognito",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kProbabilisticRevealTokenFetchOnly{
-    &kEnableProbabilisticRevealTokens,
-    /*name=*/"ProbabilisticRevealTokenFetchOnly",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool>
-    kEnableProbabilisticRevealTokensForNonProxiedRequests{
-        &kEnableProbabilisticRevealTokens,
-        /*name=*/"EnableProbabilisticRevealTokensForNonProxiedRequests",
-        /*default_value=*/false};
-
-const base::FeatureParam<bool>
-    kProbabilisticRevealTokensAddHeaderToProxiedRequests{
-        &kEnableProbabilisticRevealTokens,
-        /*name=*/"ProbabilisticRevealTokensAddHeaderToProxiedRequests",
-        /*default_value=*/false};
-
-// IP protection experiment configuration settings
-BASE_FEATURE(kEnableIpProtectionProxy,
-             "EnableIpPrivacyProxy",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-const base::FeatureParam<std::string> kIpPrivacyTokenServer{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTokenServer",
-    /*default_value=*/"https://prod.ipprotectionauth.goog"};
-
-const base::FeatureParam<std::string> kIpPrivacyTokenServerGetInitialDataPath{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyTokenServerGetInitialDataPath",
-    /*default_value=*/"/v1/ipblinding/getInitialData"};
-
-const base::FeatureParam<std::string> kIpPrivacyTokenServerGetTokensPath{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTokenServerGetTokensPath",
-    /*default_value=*/"/v1/ipblinding/auth"};
-
-const base::FeatureParam<std::string> kIpPrivacyTokenServerGetProxyConfigPath{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyTokenServerGetProxyConfigPath",
-    /*default_value=*/"/v1/ipblinding/getProxyConfig"};
-
-const base::FeatureParam<int> kIpPrivacyAuthTokenCacheBatchSize{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyAuthTokenCacheBatchSize",
-    /*default_value=*/64};
-
-const base::FeatureParam<int> kIpPrivacyAuthTokenCacheLowWaterMark{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyAuthTokenCacheLowWaterMark",
-    /*default_value=*/16};
-
-const base::FeatureParam<base::TimeDelta> kIpPrivacyProxyListFetchInterval{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyProxyListFetchInterval",
-    /*default_value=*/base::Hours(1)};
-
-const base::FeatureParam<base::TimeDelta> kIpPrivacyProxyListMinFetchInterval{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyProxyMinListFetchInterval",
-    /*default_value=*/base::Minutes(1)};
-
-const base::FeatureParam<base::TimeDelta> kIpPrivacyProxyListFetchIntervalFuzz{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyProxyListFetchIntervalFuzz",
-    /*default_value=*/base::Minutes(30)};
-
-const base::FeatureParam<bool> kIpPrivacyDirectOnly{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyDirectOnly",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyIncludeOAuthTokenInGetProxyConfig{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyIncludeOAuthTokenInGetProxyConfig",
-    /*default_value=*/false};
-
-const base::FeatureParam<std::string> kIpPrivacyProxyAHostnameOverride{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyProxyAHostnameOverride",
-    /*default_value=*/""};
-
-const base::FeatureParam<std::string> kIpPrivacyProxyBHostnameOverride{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyProxyBHostnameOverride",
-    /*default_value=*/""};
-
-const base::FeatureParam<bool> kIpPrivacyAddHeaderToProxiedRequests{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyAddHeaderToProxiedRequests",
-    /*default_value=*/false};
-
-const base::FeatureParam<base::TimeDelta> kIpPrivacyExpirationFuzz{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyExpirationFuzz",
-    /*default_value=*/base::Minutes(15)};
-
-const base::FeatureParam<base::TimeDelta>
-    kIpPrivacyTryGetAuthTokensNotEligibleBackoff{
-        &kEnableIpProtectionProxy,
-        /*name=*/"IpPrivacyTryGetAuthTokensNotEligibleBackoff",
-        /*default_value=*/base::Hours(1)};
-
-const base::FeatureParam<base::TimeDelta>
-    kIpPrivacyTryGetAuthTokensTransientBackoff{
-        &kEnableIpProtectionProxy,
-        /*name=*/"IpPrivacyTryGetAuthTokensTransientBackoff",
-        /*default_value=*/base::Seconds(5)};
-
-const base::FeatureParam<base::TimeDelta> kIpPrivacyTryGetAuthTokensBugBackoff{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyTryGetAuthTokensBugBackoff",
-    /*default_value=*/base::Minutes(10)};
-
-const base::FeatureParam<double> kIpPrivacyBackoffJitter{
-    &kEnableIpProtectionProxy, /*name=*/"IpPrivacyBackoffJitter",
-    /*default_value=*/0.25};
-
-const base::FeatureParam<bool> kIpPrivacyRestrictTopLevelSiteSchemes{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyRestrictTopLevelSiteSchemes",
-    /*default_value=*/true};
-
-const base::FeatureParam<bool> kIpPrivacyUseQuicProxies{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyUseQuicProxies",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyUseQuicProxiesOnly{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyUseQuicProxiesOnly",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool>
-    kIpPrivacyUseQuicProxiesWithoutWaitingForConnectResponse{
-        &kEnableIpProtectionProxy,
-        /*name=*/"IpPrivacyUseQuicProxiesWithoutWaitingForConnectResponse",
-        /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyFallbackToDirect{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyFallbackToDirect",
-    /*default_value=*/true};
-
-const base::FeatureParam<int> kIpPrivacyDebugExperimentArm{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyDebugExperimentArm",
-    /*default_value=*/0};
-
-const base::FeatureParam<bool> kIpPrivacyAlwaysCreateCore{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyAlwaysCreateCore",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyOnlyInIncognito{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyOnlyInIncognito",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyEnableUserBypass{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyEnableUserBypass",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyDisableForEnterpriseByDefault{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyDisableForEnterpriseByDefault",
-    /*default_value=*/false};
-
-const base::FeatureParam<bool> kIpPrivacyEnableIppInDevTools{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyEnableIppInDevTools",
-    /*default_value=*/true};
-
-const base::FeatureParam<bool> kIpPrivacyEnableIppPanelInDevTools{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyEnableIppPanelInDevTools",
-    /*default_value=*/false};
-
-const base::FeatureParam<std::string> kIpPrivacyUnconditionalProxyDomainList{
-    &kEnableIpProtectionProxy,
-    /*name=*/"IpPrivacyUnconditionalProxyDomainList", /*default_value=*/""};
-
-BASE_FEATURE(kEnableIpPrivacyProxyAdvancedFallbackLogic,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kExcludeLargeBodyReports,
              "ExcludeLargeReportBodies",
@@ -563,12 +341,10 @@ BASE_FEATURE(kUseNewAlpsCodepointQUIC, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTruncateBodyToContentLength, base::FEATURE_ENABLED_BY_DEFAULT);
 
-#if BUILDFLAG(IS_MAC)
-BASE_FEATURE(kReduceIPAddressChangeNotification,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_APPLE)
 BASE_FEATURE(kUseNetworkPathMonitorForNetworkChangeNotifier,
              base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_MAC)
+#endif  // BUILDFLAG(IS_APPLE)
 
 BASE_FEATURE(kDeviceBoundSessions, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kPersistDeviceBoundSessions, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -592,11 +368,6 @@ BASE_FEATURE_PARAM(int,
                    &kDeviceBoundSessions,
                    "SchemaVersion",
                    2);
-BASE_FEATURE_PARAM(bool,
-                   kDeviceBoundSessionsOriginTrialFeedback,
-                   &kDeviceBoundSessions,
-                   "OriginTrialFeedback",
-                   true);
 
 BASE_FEATURE(kDeviceBoundSessionsFederatedRegistration,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -617,6 +388,17 @@ BASE_FEATURE_PARAM(base::TimeDelta,
 BASE_FEATURE(kDeviceBoundSessionSigningQuotaAndCaching,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kDeviceBoundSessionsForRestrictedSites,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kDeviceBoundSessionsForRestrictedSitesExperimentId,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(std::string,
+                   kDeviceBoundSessionsForRestrictedSitesExperimentIdParam,
+                   &kDeviceBoundSessionsForRestrictedSitesExperimentId,
+                   "Value",
+                   "");
+
 BASE_FEATURE(kSpdySessionForProxyAdditionalChecks,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -636,10 +418,13 @@ BASE_FEATURE(kSimdutfBase64Support,
 
 BASE_FEATURE(kFurtherOptimizeParsingDataUrls, base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kDataUrlMimeTypeParameterPreservation,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kNoVarySearchIgnoreUnrecognizedKeys,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kEnableStaticCTAPIEnforcement, base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kEnforceOneRfc6962CtPolicy, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDiskCacheBackendExperiment, base::FEATURE_DISABLED_BY_DEFAULT);
 constexpr base::FeatureParam<DiskCacheBackend>::Option
@@ -686,6 +471,26 @@ BASE_FEATURE_PARAM(int,
                    &kDiskCacheBackendExperiment,
                    "SqlDiskCacheShardCount",
                    3);
+BASE_FEATURE_PARAM(bool,
+                   kSqlDiskCacheLoadIndexOnInit,
+                   &kDiskCacheBackendExperiment,
+                   "SqlDiskCacheLoadIndexOnInit",
+                   false);
+BASE_FEATURE_PARAM(int,
+                   kSqlDiskCacheMaxWriteBufferTotalSize,
+                   &kDiskCacheBackendExperiment,
+                   "SqlDiskCacheMaxWriteBufferTotalSize",
+                   32 * 1024 * 1024);
+BASE_FEATURE_PARAM(int,
+                   kSqlDiskCacheMaxWriteBufferSizePerEntry,
+                   &kDiskCacheBackendExperiment,
+                   "SqlDiskCacheMaxWriteBufferSizePerEntry",
+                   512 * 1024);
+BASE_FEATURE_PARAM(int,
+                   kSqlDiskCacheMaxReadBufferTotalSize,
+                   &kDiskCacheBackendExperiment,
+                   "SqlDiskCacheMaxReadBufferTotalSize",
+                   32 * 1024 * 1024);
 #endif  // ENABLE_DISK_CACHE_SQL_BACKEND
 
 BASE_FEATURE(kIgnoreHSTSForLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -740,6 +545,8 @@ BASE_FEATURE_PARAM(bool,
 BASE_FEATURE(kHttpNoVarySearchDataUseNewAreEquivalent,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kHttpCacheSkipUnusableEntry, base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kReportingApiCorsOriginHeader, base::FEATURE_ENABLED_BY_DEFAULT);
 
 #if BUILDFLAG(IS_ANDROID)
@@ -759,6 +566,10 @@ BASE_FEATURE(kRestrictAbusePorts, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kRestrictAbusePortsOnLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kTLSTrustAnchorIDs, base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
+BASE_FEATURE(kVerifyMTCs, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 BASE_FEATURE(kTcpSocketPoolLimitRandomization,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -882,8 +693,6 @@ BASE_FEATURE_PARAM(std::string,
                    /*name=*/"wildcard_quic_hints",
                    /*default_value=*/"");
 
-BASE_FEATURE(kDnsFilteringDetails, base::FEATURE_DISABLED_BY_DEFAULT);
-
 BASE_FEATURE(kUpdateIsMainFrameOriginRecentlyAccessed,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -903,5 +712,20 @@ BASE_FEATURE_PARAM(std::string,
 
 BASE_FEATURE(kDnsResponseDiscardPartialQuestions,
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kAddAutomaticWithDohFallbackMode,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kUseQuicProxiesWithoutWaitingForConnectResponse,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEnableBootstrapIPRandomizationForDoh,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kUseLockFreeX509Verification, base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_APPLE)
+BASE_FEATURE(kUseNSURLDataForGURLConversion, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_APPLE)
 
 }  // namespace net::features

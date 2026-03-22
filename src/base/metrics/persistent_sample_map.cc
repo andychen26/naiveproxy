@@ -11,7 +11,6 @@
 #include <type_traits>
 
 #include "base/check_op.h"
-#include "base/containers/contains.h"
 #include "base/debug/crash_logging.h"
 #include "base/metrics/histogram_base.h"
 #include "base/metrics/histogram_macros.h"
@@ -43,7 +42,7 @@ struct SampleRecord {
   std::atomic<Count32> count;  // The count associated with the above value.
 
   // `count` may operate inter-process and so must be lock-free.
-  // static_assert(std::atomic<Count32>::is_always_lock_free);
+  static_assert(std::atomic<Count32>::is_always_lock_free);
 
   // For backwards compatibility, `std::atomic<Count>` and `Count` must have
   // the same memory layouts. If this ever changes, make sure to increment

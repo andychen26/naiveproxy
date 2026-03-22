@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_PAGE_ALLOCATOR_H_
 #define PARTITION_ALLOC_PAGE_ALLOCATOR_H_
 
@@ -285,8 +280,6 @@ bool DecommitAndZeroSystemPages(void* address,
 constexpr PA_COMPONENT_EXPORT(
     PARTITION_ALLOC) bool DecommittedMemoryIsAlwaysZeroed() {
 #if PA_BUILDFLAG(IS_APPLE)
-  return false;
-#elif defined(NO_MADVISE_SYSCALL)
   return false;
 #else
   return true;

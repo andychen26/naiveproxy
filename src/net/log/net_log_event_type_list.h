@@ -586,11 +586,6 @@ EVENT_TYPE(SOCKS_HOSTNAME_TOO_BIG)
 EVENT_TYPE(SOCKS_UNEXPECTEDLY_CLOSED_DURING_GREETING)
 EVENT_TYPE(SOCKS_UNEXPECTEDLY_CLOSED_DURING_HANDSHAKE)
 
-EVENT_TYPE(SOCKS_NO_REQUESTED_AUTH)
-EVENT_TYPE(SOCKS_NO_ACCEPTABLE_AUTH)
-EVENT_TYPE(SOCKS_ZERO_LENGTH_DOMAIN)
-EVENT_TYPE(SOCKS_UNEXPECTED_COMMAND)
-
 // This event indicates that a bad version number was received in the
 // proxy server's response. The extra parameters show its value:
 //   {
@@ -639,6 +634,22 @@ EVENT_TYPE(SSL_CONNECT)
 //     "bytes": <The ECHConfigList used, base64 encoded>
 // }
 EVENT_TYPE(SSL_ECH_CONFIG_LIST)
+
+// Emitted in a TLS client handshake when a client is configured to send a list
+// of trust anchor IDs. The following parameters are attached:
+// {
+//   "trust_anchor_ids": <trust anchor ID relative OIDs converted to strings and
+//                        joined with commas.>,
+// }
+EVENT_TYPE(SSL_CLIENT_TRUST_ANCHOR_IDS_LIST)
+
+// Emitted in a TLS handshake when the client receives a list of trust anchor
+// IDs from the server. The following parameters are attached:
+// {
+//   "trust_anchor_ids": <trust anchor ID relative OIDs converted to strings and
+//                        joined with commas.>,
+// }
+EVENT_TYPE(SSL_CLIENT_RECEIVED_TRUST_ANCHOR_IDS)
 
 // The start/end of an SSL server handshake (aka "accept").
 EVENT_TYPE(SSL_SERVER_HANDSHAKE)
@@ -927,6 +938,14 @@ EVENT_TYPE(TRANSPORT_CONNECT_JOB_CONNECT_ATTEMPT)
 //   {
 //     "ech_enabled": <True when ECH is enabled>,
 //     "ech_config_list": <The binary representation of ECH config list>,
+//     "trust_anchor_ids_from_dns": <Optional: comma-separated trust anchor IDs
+//                                   advertised in the server's DNS record>,
+//     "selected_trust_anchor_ids": <Optional: comma-separated trust anchor IDs
+//                                   sent in the TLS ClientHello on first
+//                                   connection attempt>,
+//     "selected_trust_anchor_ids_for_retry": <Optional: comma-separated trust
+//                                             anchor IDs sent in the TLS
+//                                             ClientHello on retry>,
 //   }
 EVENT_TYPE(SSL_CONNECT_JOB_SSL_CONNECT)
 
@@ -1048,10 +1067,22 @@ EVENT_TYPE(TLS_STREAM_ATTEMPT_ALIVE)
 EVENT_TYPE(TLS_STREAM_ATTEMPT_WAIT_FOR_SERVICE_ENDPOINT)
 
 // Measures the time TlsStreamAttempt took to connect (TLS handshake).
-// For the END phase, if there was an error, the following parameters are
+// For the BEGIN phase, the following parameters are optionally attached:
+//   {
+//      "trust_anchor_ids_from_dns": <trust anchor IDs advertised in the
+//                                    server's DNS record>,
+//      "selected_trust_anchor_ids": <trust anchor IDs sent in the TLS
+//                                    ClientHello on first connection attempt>,
+//      "selected_trust_anchor_ids_for_retry": <trust anchor IDs sent in the TLS
+//                                              ClientHello on a retry>,
+//   }
+// For the END phase, the following parameters are attached:
 // attached:
 //   {
-//      "net_error": <Net error code of the failure>,
+//      "net_error": <Optional: net error code of the failure>,
+//      "server_available_trust_anchor_ids":
+//          <Optional: trust anchor IDs sent by the server in the handshake,
+//           converted to strings and joined with commas>,
 //   }
 EVENT_TYPE(TLS_STREAM_ATTEMPT_CONNECT)
 
@@ -2376,6 +2407,10 @@ EVENT_TYPE(QUIC_SESSION_POOL_JOB_RESULT)
 //                              empty>,
 //     "ech_config_list": <optional, The ECH config list if not empty>,
 //     "source_dependency": <Source identifier for the attached Job>,
+//     "trust_anchor_ids_from_dns": <trust anchor IDs advertised in the server's
+//                                   DNS record>,
+//     "selected_trust_anchor_ids": <trust anchor IDs sent in the TLS
+//                                   ClientHello>,
 //   }
 EVENT_TYPE(QUIC_SESSION)
 
@@ -2394,12 +2429,18 @@ EVENT_TYPE(QUIC_SESSION_CLOSE_ON_ERROR)
 
 // Session verification of a certificate from the server failed.
 //   {
+//     "server_available_trust_anchors_ids":
+//         <Optional: trust anchor IDs sent by the server in the handshake,
+//          converted to strings and joined with commas>,
 //   }
 EVENT_TYPE(QUIC_SESSION_CERTIFICATE_VERIFY_FAILED)
 
 // Session verified a certificate from the server.
 //   {
 //     "subjects": <list of DNS names that the certificate is valid for>,
+//     "server_available_trust_anchors_ids":
+//         <Optional: trust anchor IDs sent by the server in the handshake,
+//          converted to strings and joined with commas>,
 //   }
 EVENT_TYPE(QUIC_SESSION_CERTIFICATE_VERIFIED)
 
@@ -3511,9 +3552,6 @@ EVENT_TYPE(NETWORK_CHANGED)
 //                             been changed>,
 //     "net_interface_key":   <Boolean indicating whether SCEntNetInterface
 //                             entry has been changed>,
-//     "reduce_notification": <Boolean indicating whether
-//                             ReduceIPAddressChangeNotification feature is
-//                             enabled>,
 //     "old_ipv4_interface":  <The IPv4 primary interface name obtained before
 //                             the dynamic store entry change event>,
 //     "old_ipv6_interface":  <The IPv6 primary interface name obtained before
@@ -3921,6 +3959,9 @@ EVENT_TYPE(CERT_VERIFY_PROC_INPUT_CERT)
 // The event parameters are:
 //   {
 //      "version_major": <The major version of the Chrome Root Store>
+//      "mtc_metadata_update_time": <Optionally, the update time of the
+//                                   MtcMetadata in seconds since the unix
+//                                   epoch.>
 //   }
 EVENT_TYPE(CERT_VERIFY_PROC_CHROME_ROOT_STORE_VERSION)
 
@@ -4829,10 +4870,10 @@ EVENT_TYPE(CORS_PREFLIGHT_URL_REQUEST)
 EVENT_TYPE(CORS_PREFLIGHT_CACHED_RESULT)
 
 // ------------------------------------------------------------------------
-// Private Network Access
+// Local Network Access
 // ------------------------------------------------------------------------
 
-// This event is logged when a new connection is checked against Private
+// This event is logged when a new connection is checked against Local
 // Network Access rules.
 //
 // It contains the following parameters:
@@ -4841,12 +4882,23 @@ EVENT_TYPE(CORS_PREFLIGHT_CACHED_RESULT)
 //    "resource_address_space": <the IP address space of the remote endpoint>,
 //    "result": <the result of the check>,
 //  }
+EVENT_TYPE(LOCAL_NETWORK_ACCESS_CHECK)
+
+// This event is logged when the result of a Local Network Access permission
+// request finishes.
 //
-// If the result is "unexpected-private-network", then the request is
-// interrupted and a preflight request is retried, this time with PNA headers
-// attached. If this second connection fails the check again, the request is
-// failed.
-EVENT_TYPE(PRIVATE_NETWORK_ACCESS_CHECK)
+// It contains the following parameters:
+//  {
+//    "address_space": <the IP address space for the prompt>,
+//    "transport_type": <the transport type>,
+//    "result": <the result of the permission request>,
+//  }
+EVENT_TYPE(LOCAL_NETWORK_ACCESS_PERMISSION_REQUESTED)
+
+// This event is logged when a Local Network Access request is retried due
+// to the resource being cached from a local IP address, in order to bypass
+// the cache and retry over the network.
+EVENT_TYPE(LOCAL_NETWORK_ACCESS_RETRY_DUE_TO_CACHE)
 
 // ------------------------------------------------------------------------
 // Initiator
@@ -5017,3 +5069,49 @@ EVENT_TYPE(DBSC_REFRESH_RESULT)
 //     "status": <string>,
 //   }
 EVENT_TYPE(DBSC_REGISTRATION_RESULT)
+
+// The evaluation start/end of proxy resolution override rules.
+EVENT_TYPE(PROXY_RESOLUTION_OVERRIDE_RULES)
+
+// This event is logged when an applicable proxy override rule starts a DNS
+// resolution as required by one of its conditions. It contains the following
+// parameters:
+//   {
+//      "source_dependency": <Source identifier for the override rule which
+//      started this host resolution>,
+//   }
+EVENT_TYPE(PROXY_OVERRIDE_HOST_RESOLUTION)
+
+// This event is logged when an applicable proxy override rule starts a DNS
+// resolution as required by one of its conditions. It contains the following
+// parameters:
+//   {
+//      "source_dependency": <Source identifier for the net log that will be
+//      used by the HostResolver request>, "dns_condition": {
+//         "host": <string>,
+//         "result": <string>
+//      }
+//   }
+EVENT_TYPE(PROXY_OVERRIDE_BEGIN_HOST_RESOLUTION)
+
+// This event is logged when an applicable proxy override rule's DNS resolution
+// request completed. It contains the following parameters:
+//   {
+//      "host": <string>,
+//      "was_resolved_sync": <bool>,
+//      "net_error": <Integer error code>,
+//      "is_address_list_empty": <bool>,
+//   }
+EVENT_TYPE(PROXY_OVERRIDE_END_HOST_RESOLUTION)
+
+// This event is logged when a proxy resolution override rule was applied
+// for a request. It contains the rule, captured in the following parameters:
+//   {
+//     "destination_matchers": <string>,
+//     "proxy_list": <List of proxy servers>,
+//     "dns_conditions": [{
+//         "host": <string>,
+//         "result": <string>
+//       }]
+//   }
+EVENT_TYPE(PROXY_RESOLUTION_OVERRIDE_RULE_APPLIED)

@@ -93,6 +93,7 @@ WITH
           FROM metadata
           WHERE
             name = 'android_guest_soc_model'
+          LIMIT 1
         ),
         -- Get model from metadata
         (
@@ -101,6 +102,7 @@ WITH
           FROM metadata
           WHERE
             name = 'android_soc_model'
+          LIMIT 1
         ),
         -- Get device name from metadata and map it to model
         (
@@ -301,3 +303,17 @@ SELECT
 FROM base
 ORDER BY
   cpu;
+
+-- Device specific mapping to GPU ID
+CREATE PERFETTO TABLE _gpuid_map AS
+WITH
+  data(device, gpu_id) AS (
+    SELECT
+      *
+    FROM (VALUES
+      ("Tensor G5", 0),
+      ("Tensor", 1)) AS _values
+  )
+SELECT
+  *
+FROM data;

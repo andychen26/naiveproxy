@@ -13,9 +13,7 @@
 #include <tuple>
 #include <utility>
 
-#include "build/build_config.h"
 #include "base/compiler_specific.h"
-#include "base/containers/contains.h"
 #include "base/containers/span.h"
 #include "base/containers/span_writer.h"
 #include "base/functional/bind.h"
@@ -189,7 +187,7 @@ void LogSessionCreationInitiatorToHistogram(
   base::UmaHistogramEnumeration(histogram_name, session_creation);
 }
 
-base::Value::Dict NetLogSpdyHeadersSentParams(
+base::DictValue NetLogSpdyHeadersSentParams(
     const quiche::HttpHeaderBlock* headers,
     bool fin,
     spdy::SpdyStreamId stream_id,
@@ -200,7 +198,7 @@ base::Value::Dict NetLogSpdyHeadersSentParams(
     NetLogSource source_dependency,
     NetLogCaptureMode capture_mode) {
   auto dict =
-      base::Value::Dict()
+      base::DictValue()
           .Set("headers", ElideHttpHeaderBlockForNetLog(*headers, capture_mode))
           .Set("fin", fin)
           .Set("stream_id", static_cast<int>(stream_id))
@@ -216,27 +214,26 @@ base::Value::Dict NetLogSpdyHeadersSentParams(
   return dict;
 }
 
-base::Value::Dict NetLogSpdyHeadersReceivedParams(
+base::DictValue NetLogSpdyHeadersReceivedParams(
     const quiche::HttpHeaderBlock* headers,
     bool fin,
     spdy::SpdyStreamId stream_id,
     NetLogCaptureMode capture_mode) {
-  return base::Value::Dict()
+  return base::DictValue()
       .Set("headers", ElideHttpHeaderBlockForNetLog(*headers, capture_mode))
       .Set("fin", fin)
       .Set("stream_id", static_cast<int>(stream_id));
 }
 
-base::Value::Dict NetLogSpdySessionCloseParams(int net_error,
-                                               const std::string& description) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdySessionCloseParams(int net_error,
+                                             const std::string& description) {
+  return base::DictValue()
       .Set("net_error", net_error)
       .Set("description", description);
 }
 
-
-base::Value::Dict NetLogSpdyInitializedParams(NetLogSource source) {
-  base::Value::Dict dict;
+base::DictValue NetLogSpdyInitializedParams(NetLogSource source) {
+  base::DictValue dict;
   if (source.IsValid()) {
     source.AddToEventParameters(dict);
   }
@@ -244,9 +241,9 @@ base::Value::Dict NetLogSpdyInitializedParams(NetLogSource source) {
   return dict;
 }
 
-base::Value::Dict NetLogSpdySendSettingsParams(
+base::DictValue NetLogSpdySendSettingsParams(
     const spdy::SettingsMap* settings) {
-  base::Value::List settings_list;
+  base::ListValue settings_list;
   for (const auto& setting : *settings) {
     const spdy::SpdySettingsId id = setting.first;
     const uint32_t value = setting.second;
@@ -255,83 +252,78 @@ base::Value::Dict NetLogSpdySendSettingsParams(
                            spdy::SettingsIdToString(id).c_str(), value));
   }
 
-  return base::Value::Dict().Set("settings", std::move(settings_list));
+  return base::DictValue().Set("settings", std::move(settings_list));
 }
 
-base::Value::Dict NetLogSpdyRecvAcceptChParams(
+base::DictValue NetLogSpdyRecvAcceptChParams(
     spdy::AcceptChOriginValuePair entry) {
-  return base::Value::Dict()
+  return base::DictValue()
       .Set("origin", entry.origin)
       .Set("accept_ch", entry.value);
 }
 
-base::Value::Dict NetLogSpdyRecvSettingParams(spdy::SpdySettingsId id,
-                                              uint32_t value) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyRecvSettingParams(spdy::SpdySettingsId id,
+                                            uint32_t value) {
+  return base::DictValue()
       .Set("id", base::StringPrintf("%u (%s)", id,
                                     spdy::SettingsIdToString(id).c_str()))
       .Set("value", static_cast<int>(value));
 }
 
-base::Value::Dict NetLogSpdyWindowUpdateFrameParams(
-    spdy::SpdyStreamId stream_id,
-    uint32_t delta) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyWindowUpdateFrameParams(spdy::SpdyStreamId stream_id,
+                                                  uint32_t delta) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("delta", static_cast<int>(delta));
 }
 
-base::Value::Dict NetLogSpdySessionWindowUpdateParams(int32_t delta,
-                                                      int32_t window_size) {
-  return base::Value::Dict()
-      .Set("delta", delta)
-      .Set("window_size", window_size);
+base::DictValue NetLogSpdySessionWindowUpdateParams(int32_t delta,
+                                                    int32_t window_size) {
+  return base::DictValue().Set("delta", delta).Set("window_size", window_size);
 }
 
-base::Value::Dict NetLogSpdyDataParams(spdy::SpdyStreamId stream_id,
-                                       int size,
-                                       bool fin) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyDataParams(spdy::SpdyStreamId stream_id,
+                                     int size,
+                                     bool fin) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("size", size)
       .Set("fin", fin);
 }
 
-base::Value::Dict NetLogSpdyRecvRstStreamParams(
-    spdy::SpdyStreamId stream_id,
-    spdy::SpdyErrorCode error_code) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyRecvRstStreamParams(spdy::SpdyStreamId stream_id,
+                                              spdy::SpdyErrorCode error_code) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("error_code", base::StringPrintf("%u (%s)", error_code,
                                             ErrorCodeToString(error_code)));
 }
 
-base::Value::Dict NetLogSpdySendRstStreamParams(
-    spdy::SpdyStreamId stream_id,
-    spdy::SpdyErrorCode error_code,
-    const std::string& description) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdySendRstStreamParams(spdy::SpdyStreamId stream_id,
+                                              spdy::SpdyErrorCode error_code,
+                                              const std::string& description) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("error_code", base::StringPrintf("%u (%s)", error_code,
                                             ErrorCodeToString(error_code)))
       .Set("description", description);
 }
 
-base::Value::Dict NetLogSpdyPingParams(spdy::SpdyPingId unique_id,
-                                       bool is_ack,
-                                       const char* type) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyPingParams(spdy::SpdyPingId unique_id,
+                                     bool is_ack,
+                                     const char* type) {
+  return base::DictValue()
       .Set("unique_id", static_cast<int>(unique_id))
       .Set("type", type)
       .Set("is_ack", is_ack);
 }
 
-base::Value::Dict NetLogSpdyRecvGoAwayParams(spdy::SpdyStreamId last_stream_id,
-                                             int active_streams,
-                                             spdy::SpdyErrorCode error_code,
-                                             std::string_view debug_data,
-                                             NetLogCaptureMode capture_mode) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyRecvGoAwayParams(spdy::SpdyStreamId last_stream_id,
+                                           int active_streams,
+                                           spdy::SpdyErrorCode error_code,
+                                           std::string_view debug_data,
+                                           NetLogCaptureMode capture_mode) {
+  return base::DictValue()
       .Set("last_accepted_stream_id", static_cast<int>(last_stream_id))
       .Set("active_streams", active_streams)
       .Set("error_code", base::StringPrintf("%u (%s)", error_code,
@@ -340,34 +332,34 @@ base::Value::Dict NetLogSpdyRecvGoAwayParams(spdy::SpdyStreamId last_stream_id,
            ElideGoAwayDebugDataForNetLog(capture_mode, debug_data));
 }
 
-base::Value::Dict NetLogSpdySessionStalledParams(size_t num_active_streams,
-                                                 size_t num_created_streams,
-                                                 size_t max_concurrent_streams,
-                                                 const std::string& url) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdySessionStalledParams(size_t num_active_streams,
+                                               size_t num_created_streams,
+                                               size_t max_concurrent_streams,
+                                               const std::string& url) {
+  return base::DictValue()
       .Set("num_active_streams", static_cast<int>(num_active_streams))
       .Set("num_created_streams", static_cast<int>(num_created_streams))
       .Set("max_concurrent_streams", static_cast<int>(max_concurrent_streams))
       .Set("url", url);
 }
 
-base::Value::Dict NetLogSpdyPriorityParams(spdy::SpdyStreamId stream_id,
-                                           spdy::SpdyStreamId parent_stream_id,
-                                           int weight,
-                                           bool exclusive) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyPriorityParams(spdy::SpdyStreamId stream_id,
+                                         spdy::SpdyStreamId parent_stream_id,
+                                         int weight,
+                                         bool exclusive) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("parent_stream_id", static_cast<int>(parent_stream_id))
       .Set("weight", weight)
       .Set("exclusive", exclusive);
 }
 
-base::Value::Dict NetLogSpdyGreasedFrameParams(spdy::SpdyStreamId stream_id,
-                                               uint8_t type,
-                                               uint8_t flags,
-                                               size_t length,
-                                               RequestPriority priority) {
-  return base::Value::Dict()
+base::DictValue NetLogSpdyGreasedFrameParams(spdy::SpdyStreamId stream_id,
+                                             uint8_t type,
+                                             uint8_t flags,
+                                             size_t length,
+                                             RequestPriority priority) {
+  return base::DictValue()
       .Set("stream_id", static_cast<int>(stream_id))
       .Set("type", type)
       .Set("flags", flags)
@@ -843,13 +835,13 @@ SpdySession::SpdySession(
       session_creation_initiator_(session_creation_initiator),
       spdy_session_initiator_(spdy_session_initiator) {
   net_log_.BeginEvent(NetLogEventType::HTTP2_SESSION, [&]() {
-    return base::Value::Dict()
+    return base::DictValue()
         .Set("host", host_port_pair().ToString())
         .Set("proxy", spdy_session_key_.proxy_chain().ToDebugString());
   });
 
-  DCHECK(base::Contains(initial_settings_, spdy::SETTINGS_HEADER_TABLE_SIZE));
-  DCHECK(base::Contains(initial_settings_, spdy::SETTINGS_INITIAL_WINDOW_SIZE));
+  DCHECK(initial_settings_.contains(spdy::SETTINGS_HEADER_TABLE_SIZE));
+  DCHECK(initial_settings_.contains(spdy::SETTINGS_INITIAL_WINDOW_SIZE));
 
   if (greased_http2_frame_) {
     // See https://tools.ietf.org/html/draft-bishop-httpbis-grease-00
@@ -1273,7 +1265,7 @@ void SpdySession::ResetStream(spdy::SpdyStreamId stream_id,
 }
 
 bool SpdySession::IsStreamActive(spdy::SpdyStreamId stream_id) const {
-  return base::Contains(active_streams_, stream_id);
+  return active_streams_.contains(stream_id);
 }
 
 LoadState SpdySession::GetLoadState() const {
@@ -1387,14 +1379,14 @@ void SpdySession::MaybeFinishGoingAway() {
   }
 }
 
-base::Value::Dict SpdySession::GetInfoAsValue() const {
+base::DictValue SpdySession::GetInfoAsValue() const {
   int pending_create_stream_request_count = 0;
   for (const auto& queue : pending_create_stream_queues_) {
     pending_create_stream_request_count += queue.size();
   }
 
   auto dict =
-      base::Value::Dict()
+      base::DictValue()
           .Set("source_id", static_cast<int>(net_log_.source().id))
           .Set("host_port_pair", host_port_pair().ToString())
           .Set("proxy", spdy_session_key_.proxy_chain().ToDebugString())
@@ -1426,7 +1418,7 @@ base::Value::Dict SpdySession::GetInfoAsValue() const {
 
   // TODO(crbug.com/405934874): Remove once we identify the cause of the bug.
   {
-    base::Value::Dict key_dict;
+    base::DictValue key_dict;
     key_dict.Set("privacy_mode",
                  PrivacyModeToDebugString(spdy_session_key_.privacy_mode()));
     key_dict.Set(
@@ -1447,14 +1439,14 @@ base::Value::Dict SpdySession::GetInfoAsValue() const {
   }
 
   if (!pooled_aliases_.empty()) {
-    base::Value::List alias_list;
+    base::ListValue alias_list;
     for (const auto& alias : pooled_aliases_) {
       alias_list.Append(alias.host_port_pair().ToString());
     }
     dict.Set("aliases", std::move(alias_list));
   }
 
-  base::Value::List active_stream_details;
+  base::ListValue active_stream_details;
   for (const auto& [_, stream] : active_streams_) {
     active_stream_details.Append(stream->GetInfoAsValue());
   }
@@ -1721,8 +1713,9 @@ bool SpdySession::CancelStreamRequest(
   for (int i = MINIMUM_PRIORITY; i <= MAXIMUM_PRIORITY; ++i) {
     if (priority == i)
       continue;
-    DCHECK(!base::Contains(pending_create_stream_queues_[i], request.get(),
-                           &base::WeakPtr<SpdyStreamRequest>::get));
+    DCHECK(!std::ranges::contains(pending_create_stream_queues_[i],
+                                  request.get(),
+                                  &base::WeakPtr<SpdyStreamRequest>::get));
   }
 #endif
 
@@ -1859,25 +1852,6 @@ void SpdySession::EnqueueResetStreamFrame(spdy::SpdyStreamId stream_id,
   DCHECK(buffered_spdy_framer_.get());
   std::unique_ptr<spdy::SpdySerializedFrame> rst_frame(
       buffered_spdy_framer_->CreateRstStream(stream_id, error_code));
-  // Can't send padding if the send window is very tight.
-  if (session_send_window_size_ >= 72) {
-    constexpr int kNonPaddingSize =
-        spdy::kDataFrameMinimumSize + spdy::kRstStreamFrameSize;
-    uint8_t padding_length = base::RandInt(48, 72) - kNonPaddingSize;
-    size_t expected_length = kNonPaddingSize + padding_length;
-    spdy::SpdyFrameBuilder builder(expected_length);
-    builder.BeginNewFrame(spdy::SpdyFrameType::DATA,
-                          spdy::DATA_FLAG_FIN | spdy::DATA_FLAG_PADDED,
-                          stream_id, padding_length);
-    builder.WriteUInt8(padding_length - 1);
-    std::string padding(padding_length - 1, 0);
-    builder.WriteBytes(padding.data(), padding.size());
-    builder.BeginNewFrame(spdy::SpdyFrameType::RST_STREAM, 0, stream_id, 4);
-    builder.WriteUInt32(error_code);
-    DCHECK_EQ(expected_length, builder.length());
-    rst_frame = std::make_unique<spdy::SpdySerializedFrame>(builder.take());
-    DecreaseSendWindowSize(padding_length);
-  }
 
   EnqueueSessionWrite(priority, spdy::SpdyFrameType::RST_STREAM,
                       std::move(rst_frame));
@@ -2809,7 +2783,7 @@ void SpdySession::OnRstStream(spdy::SpdyStreamId stream_id,
   auto it = active_streams_.find(stream_id);
   if (it == active_streams_.end()) {
     // NOTE:  it may just be that the stream was cancelled.
-    VLOG(1) << "Received RST for invalid stream" << stream_id;
+    LOG(WARNING) << "Received RST for invalid stream" << stream_id;
     return;
   }
 
@@ -3043,7 +3017,7 @@ void SpdySession::OnWindowUpdate(spdy::SpdyStreamId stream_id,
 
     if (it == active_streams_.end()) {
       // NOTE:  it may just be that the stream was cancelled.
-      VLOG(1) << "Received WINDOW_UPDATE for invalid stream " << stream_id;
+      LOG(WARNING) << "Received WINDOW_UPDATE for invalid stream " << stream_id;
       return;
     }
 
@@ -3088,7 +3062,7 @@ void SpdySession::OnHeaders(spdy::SpdyStreamId stream_id,
   auto it = active_streams_.find(stream_id);
   if (it == active_streams_.end()) {
     // NOTE:  it may just be that the stream was cancelled.
-    VLOG(1) << "Received HEADERS for invalid stream " << stream_id;
+    LOG(WARNING) << "Received HEADERS for invalid stream " << stream_id;
     return;
   }
 
@@ -3279,12 +3253,7 @@ void SpdySession::IncreaseRecvWindowSize(int32_t delta_window_size) {
   session_unacked_recv_window_bytes_ += delta_window_size;
   const base::TimeDelta elapsed =
       base::TimeTicks::Now() - last_recv_window_update_;
-#if BUILDFLAG(IS_IOS)
-  constexpr int kWindowUpdateDivisor = 8;
-#else
-  constexpr int kWindowUpdateDivisor = 2;
-#endif
-  if (session_unacked_recv_window_bytes_ > session_max_recv_window_size_ / kWindowUpdateDivisor ||
+  if (session_unacked_recv_window_bytes_ > session_max_recv_window_size_ / 2 ||
       elapsed >= time_to_buffer_small_window_updates_) {
     last_recv_window_update_ = base::TimeTicks::Now();
     SendWindowUpdateFrame(spdy::kSessionFlowControlStreamId,

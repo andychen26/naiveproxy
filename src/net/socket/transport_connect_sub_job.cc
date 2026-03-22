@@ -218,7 +218,7 @@ int TransportConnectSubJob::DoEndpointLockComplete() {
           net_log.source());
 
   net_log.AddEvent(NetLogEventType::TRANSPORT_CONNECT_JOB_CONNECT_ATTEMPT, [&] {
-    auto dict = base::Value::Dict().Set("address", CurrentAddress().ToString());
+    auto dict = base::DictValue().Set("address", CurrentAddress().ToString());
     transport_socket_->NetLog().source().AddToEventParameters(dict);
     return dict;
   });
@@ -247,8 +247,7 @@ int TransportConnectSubJob::DoTransportConnectComplete(int result) {
     // Drop the socket to release the endpoint lock, if any.
     transport_socket_.reset();
 
-    parent_job_->connection_attempts_.push_back(
-        ConnectionAttempt(CurrentAddress(), result));
+    parent_job_->connection_attempts_.emplace_back(CurrentAddress(), result);
 
     // Don't try the next address if entering suspend mode.
     if (result != ERR_NETWORK_IO_SUSPENDED &&

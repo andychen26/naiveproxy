@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #ifndef PARTITION_ALLOC_AARCH64_SUPPORT_H_
 #define PARTITION_ALLOC_AARCH64_SUPPORT_H_
 
@@ -15,9 +10,7 @@
 #include "partition_alloc/build_config.h"
 #include "partition_alloc/buildflags.h"
 
-#if defined(__MUSL__)
-// Musl does not support ifunc.
-#elif PA_BUILDFLAG(IS_ANDROID) || PA_BUILDFLAG(IS_LINUX)
+#if PA_BUILDFLAG(IS_ANDROID) || PA_BUILDFLAG(IS_LINUX)
 #define HAS_HW_CAPS
 #endif
 

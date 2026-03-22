@@ -17,6 +17,7 @@
 #include "quiche/quic/core/quic_clock.h"
 #include "quiche/quic/core/quic_time.h"
 #include "quiche/quic/moqt/moqt_fetch_task.h"
+#include "quiche/quic/moqt/moqt_key_value_pair.h"
 #include "quiche/quic/moqt/moqt_messages.h"
 #include "quiche/quic/moqt/moqt_object.h"
 #include "quiche/quic/moqt/moqt_priority.h"
@@ -49,8 +50,8 @@ bool RemoteTrack::CheckDataStreamType(MoqtDataStreamType type) {
 
 void SubscribeRemoteTrack::OnStreamOpened() {
   ++currently_open_streams_;
-  if (subscribe_done_alarm_ != nullptr && subscribe_done_alarm_->IsSet()) {
-    subscribe_done_alarm_->Cancel();
+  if (publish_done_alarm_ != nullptr && publish_done_alarm_->IsSet()) {
+    publish_done_alarm_->Cancel();
   }
 }
 
@@ -67,7 +68,7 @@ void SubscribeRemoteTrack::OnStreamClosed(
       visitor_->OnStreamReset(full_track_name(), *index);
     }
   }
-  if (subscribe_done_alarm_ == nullptr) {
+  if (publish_done_alarm_ == nullptr) {
     return;
   }
   MaybeSetPublishDoneAlarm();
@@ -75,10 +76,10 @@ void SubscribeRemoteTrack::OnStreamClosed(
 
 void SubscribeRemoteTrack::OnPublishDone(
     uint64_t stream_count, const quic::QuicClock* clock,
-    std::unique_ptr<quic::QuicAlarm> subscribe_done_alarm) {
+    std::unique_ptr<quic::QuicAlarm> publish_done_alarm) {
   total_streams_ = stream_count;
   clock_ = clock;
-  subscribe_done_alarm_ = std::move(subscribe_done_alarm);
+  publish_done_alarm_ = std::move(publish_done_alarm);
   MaybeSetPublishDoneAlarm();
 }
 
@@ -86,9 +87,11 @@ void SubscribeRemoteTrack::MaybeSetPublishDoneAlarm() {
   if (currently_open_streams_ == 0 && total_streams_.has_value() &&
       clock_ != nullptr) {
     quic::QuicTimeDelta timeout =
-        std::min(delivery_timeout_, kMaxPublishDoneTimeout);
+        std::min(parameters_.delivery_timeout.value_or(kDefaultDeliveryTimeout),
+                 publisher_delivery_timeout_);
+    timeout = std::min(timeout, kMaxPublishDoneTimeout);
     timeout = std::max(timeout, kMinPublishDoneTimeout);
-    subscribe_done_alarm_->Set(clock_->ApproximateNow() + timeout);
+    publish_done_alarm_->Set(clock_->ApproximateNow() + timeout);
   }
 }
 
@@ -152,7 +155,7 @@ void UpstreamFetch::OnFetchResult(Location largest_location,
   }
   if (!status.ok()) {
     std::move(ok_callback_)(std::make_unique<MoqtFailedFetch>(status));
-    // This is called from OnFetchError, which will delete UpstreamFetch. So
+    // This is called from OnRequestError, which will delete UpstreamFetch. So
     // there is no need to call |callback|, which would inappropriately send a
     // FETCH_CANCEL.
     return;
@@ -160,7 +163,7 @@ void UpstreamFetch::OnFetchResult(Location largest_location,
   auto task = std::make_unique<UpstreamFetchTask>(largest_location, status,
                                                   std::move(callback));
   task_ = task->weak_ptr();
-  window_mutable().TruncateEnd(largest_location);
+  window_.TruncateEnd(largest_location);
   std::move(ok_callback_)(std::move(task));
   if (can_read_callback_) {
     task_.GetIfAvailable()->set_can_read_callback(

@@ -18,7 +18,6 @@
 #include "base/apple/scoped_mach_port.h"
 #include "base/base_export.h"
 #include "base/containers/buffer_iterator.h"
-#include "base/feature_list.h"
 #include "base/synchronization/lock.h"
 #include "base/thread_annotations.h"
 #include "build/ios_buildflags.h"
@@ -185,7 +184,7 @@ class BASE_EXPORT MachPortRendezvousClient {
 namespace internal {
 
 // This limit is arbitrary and can be safely increased in the future.
-inline constexpr size_t kMaximumRendezvousPorts = 6;
+inline constexpr size_t kMaximumRendezvousPorts = 8;
 
 enum MachRendezvousMsgId : mach_msg_id_t {
   kMachRendezvousMsgIdRequest = 'mrzv',

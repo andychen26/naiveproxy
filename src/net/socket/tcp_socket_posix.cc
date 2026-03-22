@@ -12,7 +12,6 @@
 #include <memory>
 
 #include "base/files/file_path.h"
-#include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/lazy_instance.h"
 #include "base/logging.h"
@@ -408,17 +407,6 @@ int TCPSocketPosix::GetPeerAddress(IPEndPoint* address) const {
 
 int TCPSocketPosix::SetDefaultOptionsForServer() {
   DCHECK(socket_);
-
-#ifdef SO_REUSEPORT
-  int reuseport = 1;
-  int rv =
-      setsockopt(socket_->socket_fd(), SOL_SOCKET, SO_REUSEPORT,
-                 reinterpret_cast<const char*>(&reuseport), sizeof(reuseport));
-  // Ignore errors that the option does not exist.
-  if (rv != 0 && errno != ENOPROTOOPT)
-    return MapSystemError(errno);
-#endif  // SO_REUSEPORT
-
   return AllowAddressReuse();
 }
 

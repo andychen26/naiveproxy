@@ -106,8 +106,7 @@ HttpStreamFactory::StreamRequestInfo::StreamRequestInfo(
       load_flags(http_request_info.load_flags),
       privacy_mode(http_request_info.privacy_mode),
       secure_dns_policy(http_request_info.secure_dns_policy),
-      socket_tag(http_request_info.socket_tag),
-      force_quic(http_request_info.force_quic) {}
+      socket_tag(http_request_info.socket_tag) {}
 
 HttpStreamFactory::StreamRequestInfo::StreamRequestInfo(
     const StreamRequestInfo& other) = default;

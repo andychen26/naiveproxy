@@ -12,18 +12,19 @@ import subprocess
 # //chrome/installer/linux/rpm/dist_package_provides.json
 MAX_ALLOWED_GLIBC_VERSION = [2, 26]
 MAX_ALLOWED_GLIBC_VERSION_ARCH = {
-    # riscv64 was added to glibc 2.33, but res_search (needed by Go CGO net package)
-    # was not available until glibc 2.34 on this architecture.
-    "riscv64": [2, 34],
-    "loong64": [2, 99],
+    "riscv64": [2, 33],
 }
 
-VERSION_PATTERN = re.compile(r"GLIBC_([0-9\.]+)")
+VERSION_PATTERN = re.compile("GLIBC_([0-9\.]+)")
 SECTION_PATTERN = re.compile(r"^ *\[ *[0-9]+\] +(\S+) +\S+ + ([0-9a-f]+) .*$")
 
 # Some otherwise disallowed symbols are referenced in the linux-chromeos build.
 # To continue supporting it, allow these symbols to remain enabled.
 SYMBOL_ALLOWLIST = {
+    "fts64_close",
+    "fts64_open",
+    "fts64_read",
+    "memfd_create",
 }
 
 
@@ -42,7 +43,7 @@ def reversion_glibc(bin_file: str, arch: str) -> None:
     stdout = subprocess.check_output(
         ["readelf", "--dyn-syms", "--wide", bin_file])
     for line in stdout.decode("utf-8").split("\n"):
-        cols = re.split(r"\s+", line)
+        cols = re.split("\s+", line)
         # Remove localentry and next element which appears only in ppc64le
         # readelf output. Keeping them causes incorrect symbol parsing
         # leading to improper GLIBC version restrictions.

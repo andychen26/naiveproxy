@@ -23,8 +23,7 @@ void RunObjectCallbackAndroid(const JavaRef<jobject>& callback,
 }
 
 void RunBooleanCallbackAndroid(const JavaRef<jobject>& callback, bool arg) {
-  Java_Helper_onBooleanResultFromNative(AttachCurrentThread(), callback,
-                                        static_cast<jboolean>(arg));
+  Java_Helper_onBooleanResultFromNative(AttachCurrentThread(), callback, arg);
 }
 
 void RunIntCallbackAndroid(const JavaRef<jobject>& callback, int32_t arg) {
@@ -63,9 +62,7 @@ void RunByteArrayCallbackAndroid(const JavaRef<jobject>& callback,
   Java_Helper_onObjectResultFromNative(env, callback, j_bytes);
 }
 
-void RunRunnableAndroid(const JavaRef<jobject>& runnable) {
-  Java_Helper_runRunnable(AttachCurrentThread(), runnable);
-}
-
 }  // namespace android
 }  // namespace base
+
+DEFINE_JNI(Callback)

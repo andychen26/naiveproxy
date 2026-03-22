@@ -41,6 +41,7 @@
 #include "protos/perfetto/trace/clock_snapshot.pbzero.h"
 #include "protos/third_party/simpleperf/record_file.pbzero.h"
 #include "src/trace_processor/importers/common/clock_tracker.h"
+#include "src/trace_processor/importers/common/metadata_tracker.h"
 #include "src/trace_processor/importers/common/process_tracker.h"
 #include "src/trace_processor/importers/common/slice_tracker.h"
 #include "src/trace_processor/importers/perf/attrs_section_reader.h"
@@ -111,7 +112,6 @@ bool ReadTime(const Record& record, std::optional<uint64_t>& time) {
     return reader.Skip(reader.size_left() - *offset) &&
            reader.ReadOptional(time);
   }
-
   std::optional<size_t> offset = record.attr->time_offset_from_start();
   if (!offset.has_value()) {
     time = std::nullopt;
@@ -250,8 +250,8 @@ PerfDataTokenizer::ParseAttrs() {
 
   ASSIGN_OR_RETURN(perf_invocation_, builder.Build());
   if (perf_invocation_->HasPerfClock()) {
-    RETURN_IF_ERROR(context_->clock_tracker->SetTraceTimeClock(
-        protos::pbzero::BUILTIN_CLOCK_PERF));
+    context_->clock_tracker->SetTraceTimeClock(
+        protos::pbzero::BUILTIN_CLOCK_PERF);
   }
   parsing_state_ = ParsingState::kSeekRecords;
   return ParsingResult::kSuccess;
@@ -351,36 +351,49 @@ base::StatusOr<PerfDataTokenizer::ParsingResult> PerfDataTokenizer::ParseRecord(
   return ParsingResult::kSuccess;
 }
 
-base::StatusOr<int64_t> PerfDataTokenizer::ExtractTraceTimestamp(
+std::optional<int64_t> PerfDataTokenizer::ExtractTraceTimestamp(
     const Record& record) {
   std::optional<uint64_t> time;
   if (!ReadTime(record, time)) {
-    return base::ErrStatus("Failed to read time");
+    return std::nullopt;
   }
-
-  // TODO(449973773): `*time > 0` is a temporary hack to work around the fact
-  // that some perf record types which actually don't have a timestamp. They
-  // should have been procesed during tokenization time (e.g. MMAP/MMAP2/COMM)
-  // but were incorrectly written to be handled with at parsing time. So by
-  // setting trace_ts to `latest_timestamp_`, we don't try and convert a zero
-  // timestamp accidentally, leading to negative timestamps in some clocks.
-  base::StatusOr<int64_t> trace_ts =
-      time && *time > 0
-          ? context_->clock_tracker->ToTraceTime(record.attr->clock_id(),
-                                                 static_cast<int64_t>(*time))
-          : latest_timestamp_;
-  if (PERFETTO_LIKELY(trace_ts.ok())) {
-    latest_timestamp_ = std::max(latest_timestamp_, *trace_ts);
+  if (!time || *time == 0) {
+    // Record has no timestamp - return nullopt to signal it should be buffered
+    return std::nullopt;
   }
-  return trace_ts;
+  return context_->clock_tracker->ToTraceTime(record.attr->clock_id(),
+                                              static_cast<int64_t>(*time));
 }
+
 void PerfDataTokenizer::MaybePushRecord(Record record) {
-  base::StatusOr<int64_t> trace_ts = ExtractTraceTimestamp(record);
-  if (!trace_ts.ok()) {
-    context_->storage->IncrementIndexedStats(
-        stats::perf_record_skipped, static_cast<int>(record.header.type));
+  std::optional<int64_t> trace_ts = ExtractTraceTimestamp(record);
+
+  // Track minimum timestamp for records without timestamps
+  if (trace_ts) {
+    min_timestamp_ = std::min(min_timestamp_.value_or(*trace_ts), *trace_ts);
+  }
+  // Buffer COMM records until end of file to make sure regardless of whether
+  // or not they have timestamps, they are sent in the correct order.
+  if (record.header.type == PERF_RECORD_COMM) {
+    buffered_comm_records_.push_back({std::move(record), trace_ts});
     return;
   }
+  // Record has no timestamp (e.g. MMAP, MMAP2). Buffer it until the end
+  // of file and send with the minimum timestamp seen in the file.
+  if (!trace_ts) {
+    pending_records_without_timestamp_.push_back(std::move(record));
+    return;
+  }
+
+  // Flush all pending records without timestamps with the minimum timestamp.
+  // We do this here to make sure that if `record` depends on any of the
+  // pending records, we process them in order.
+  for (auto& pending : pending_records_without_timestamp_) {
+    stream_->Push(*min_timestamp_, std::move(pending));
+  }
+  pending_records_without_timestamp_.clear();
+
+  // Now push the current record.
   stream_->Push(*trace_ts, std::move(record));
 }
 
@@ -564,12 +577,33 @@ base::Status PerfDataTokenizer::ProcessItraceStartRecord(Record record) {
   return base::OkStatus();
 }
 
-base::Status PerfDataTokenizer::NotifyEndOfFile() {
+base::Status PerfDataTokenizer::OnPushDataToSorter() {
+  // Phase 1: Validate parsing is complete
   if (parsing_state_ != ParsingState::kDone) {
     return base::ErrStatus("Premature end of perf file.");
   }
-  RETURN_IF_ERROR(perf_tracker_.NotifyEndOfFile());
+
+  // Flush all buffered COMM records in file order
+  for (auto& comm : buffered_comm_records_) {
+    int64_t ts;
+    if (comm.timestamp.has_value()) {
+      ts = *comm.timestamp;
+    } else if (min_timestamp_.has_value()) {
+      ts = *min_timestamp_;
+    } else {
+      // Skip records without timestamps if we never saw a minimum timestamp
+      continue;
+    }
+    stream_->Push(ts, std::move(comm.record));
+  }
+  buffered_comm_records_.clear();
+
   return base::OkStatus();
+}
+
+void PerfDataTokenizer::OnEventsFullyExtracted() {
+  // Phase 3: Finalize tracker
+  perf_tracker_.OnEventsFullyExtracted();
 }
 
 }  // namespace perfetto::trace_processor::perf_importer

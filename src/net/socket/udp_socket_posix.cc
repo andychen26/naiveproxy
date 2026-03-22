@@ -233,12 +233,21 @@ void UDPSocketPosix::Close() {
       const int retval = HANDLE_EINTR(
           change_fdguard_np(socket_, &guardid, GUARD_CLOSE | GUARD_DUP,
                             &guardid, GUARD_CLOSE | GUARD_DUP, &fdflags));
-      SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_retval",
-                              retval);
-      SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_errno", errno);
-      SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_fdflags",
-                              fdflags);
-      base::debug::DumpWithoutCrashing();
+      // We have seen the case
+      //   retval == -1
+      //   errno == EBADF
+      //   fdflags == 0
+      // many times and we don't need any more dumps for it. Only gather dumps
+      // for novel cases.
+      if (retval != -1 || errno != EBADF || fdflags != 0) {
+        SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_retval",
+                                retval);
+        SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_errno",
+                                errno);
+        SCOPED_CRASH_KEY_NUMBER("UdpSocketPosix", "change_fdguard_fdflags",
+                                fdflags);
+        base::debug::DumpWithoutCrashing();
+      }
     } else if (errno != ENOTCONN && errno != EPROTOTYPE) {
       PLOG(FATAL) << "Unexpected errno from guarded_close_np";
     }
@@ -945,7 +954,8 @@ int UDPSocketPosix::RandomBind(const IPAddress& address) {
   DCHECK_EQ(bind_type_, DatagramSocket::RANDOM_BIND);
 
   for (int i = 0; i < kBindRetries; ++i) {
-    int rv = DoBind(IPEndPoint(address, base::RandInt(kPortStart, kPortEnd)));
+    int rv = DoBind(
+        IPEndPoint(address, base::RandIntInclusive(kPortStart, kPortEnd)));
     if (rv != ERR_ADDRESS_IN_USE)
       return rv;
   }

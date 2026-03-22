@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#include "perfetto/ext/trace_processor/trace_processor_shell.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -24,6 +26,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -58,17 +61,16 @@
 #include "perfetto/trace_processor/read_trace.h"
 #include "perfetto/trace_processor/trace_blob.h"
 #include "perfetto/trace_processor/trace_processor.h"
-#include "src/profiling/deobfuscator.h"
-#include "src/profiling/symbolizer/local_symbolizer.h"
-#include "src/profiling/symbolizer/symbolize_database.h"
-#include "src/profiling/symbolizer/symbolizer.h"
 #include "src/trace_processor/metrics/all_chrome_metrics.descriptor.h"
 #include "src/trace_processor/metrics/all_webview_metrics.descriptor.h"
 #include "src/trace_processor/metrics/metrics.descriptor.h"
 #include "src/trace_processor/read_trace_internal.h"
 #include "src/trace_processor/rpc/rpc.h"
 #include "src/trace_processor/rpc/stdiod.h"
+#include "src/trace_processor/trace_summary/summary.h"
+#include "src/trace_processor/util/deobfuscation/deobfuscator.h"
 #include "src/trace_processor/util/sql_modules.h"
+#include "src/trace_processor/util/symbolizer/symbolize_database.h"
 
 #include "protos/perfetto/trace_processor/trace_processor.pbzero.h"
 
@@ -78,6 +80,7 @@
 
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_FREEBSD) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
 #define PERFETTO_HAS_SIGNAL_H() 1
 #else
@@ -124,6 +127,7 @@ std::string GetConfigPath() {
   const char* homedir = getenv("HOME");
 #if PERFETTO_BUILDFLAG(PERFETTO_OS_LINUX) ||   \
     PERFETTO_BUILDFLAG(PERFETTO_OS_ANDROID) || \
+    PERFETTO_BUILDFLAG(PERFETTO_OS_FREEBSD) || \
     PERFETTO_BUILDFLAG(PERFETTO_OS_APPLE)
   if (homedir == nullptr)
     homedir = getpwuid(getuid())->pw_dir;
@@ -654,6 +658,11 @@ base::Status PrintPerfFile(const std::string& perf_file_path,
   return base::OkStatus();
 }
 
+// Forward declaration.
+TraceSummarySpecBytes::Format GuessSummarySpecFormat(
+    const std::string& path,
+    const std::string& content);
+
 class MetricExtension {
  public:
   void SetDiskPath(std::string path) {
@@ -725,6 +734,8 @@ struct CommandLineOptions {
 
   std::string query_file_path;
   std::string query_string;
+  std::vector<std::string> structured_query_specs;
+  std::string structured_query_id;
   std::vector<std::string> sql_package_paths;
   std::vector<std::string> override_sql_package_paths;
 
@@ -801,13 +812,37 @@ PerfettoSQL:
                                       If used with --run-metrics, the query is
                                       executed after the selected metrics and
                                       the metrics output is suppressed.
- --add-sql-package PACKAGE_PATH       Files from the directory will be treated
-                                      as a new SQL package and can be used for
-                                      INCLUDE PERFETTO MODULE statements. The
-                                      name of the directory is the package name.
- --override-sql-package PACKAGE_PATH  Will override trace processor package with
-                                      passed contents. The outer directory will
-                                      specify the package name.
+ --add-sql-package PATH[@PACKAGE]     Registers SQL files from a directory as
+                                      a package for use with INCLUDE PERFETTO
+                                      MODULE statements.
+
+                                      By default, the directory name becomes the
+                                      root package name. Use @PACKAGE to
+                                      override.
+
+                                      Given a directory structure:
+                                        mydir/
+                                          utils.sql
+                                          helpers/common.sql
+
+                                      --add-sql-package ./mydir
+                                        Registers modules as:
+                                          mydir.utils
+                                          mydir.helpers.common
+                                        Usage: INCLUDE PERFETTO MODULE mydir.utils;
+
+                                      --add-sql-package ./mydir@foo
+                                        Registers modules as:
+                                          foo.utils
+                                          foo.helpers.common
+                                        Usage: INCLUDE PERFETTO MODULE foo.utils;
+
+                                      --add-sql-package ./mydir@foo.bar.baz
+                                        Registers modules as:
+                                          foo.bar.baz.utils
+                                          foo.bar.baz.helpers.common
+                                        Usage: INCLUDE PERFETTO MODULE foo.bar.*;
+
 
 Trace summarization:
   --summary                           Enables the trace summarization features of
@@ -889,12 +924,29 @@ Advanced:
                                       passed contents. The outer directory will
                                       be ignored. Only allowed when --dev is
                                       specified.
- --add-sql-module PACKAGE_PATH        Alias for --add-sql-package, kept for
-                                      backwards compatibility. Prefer
-                                      --add-sql-package.
- --override-sql-module PACKAGE_PATH   Alias for --override-sql-package, kept for
-                                      backwards compatibility. Prefer
-                                      --override-sql-package.
+ --override-sql-package PATH[@PKG]    Same as --add-sql-package but allows
+                                      overriding existing user-registered
+                                      packages with the same name. This bypasses
+                                      checks trace processor makes around
+                                      packages already existing and clashing
+                                      with stdlib package names so should be
+                                      used with caution.
+
+Structured queries:
+ --structured-query-spec SPEC_PATH    Parses the spec at the specified path and
+                                      makes queries available for execution.
+                                      Spec files must be instances of the
+                                      perfetto.protos.TraceSummarySpec proto.
+                                      If the file extension is `.textproto` then
+                                      the spec file will be parsed as a
+                                      textproto. If the file extension is `.pb`
+                                      then it will be parsed as a binary
+                                      protobuf. Otherwise, heuristics will be
+                                      used to determine the format.
+ --structured-query-id ID             Specifies that the structured query with
+                                      the given ID should be executed. The spec
+                                      for the query must exist in one of the
+                                      files passed to --structured-query-spec.
 
 Metrics (v1):
 
@@ -937,6 +989,8 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
 
     OPT_ADD_SQL_PACKAGE,
     OPT_OVERRIDE_SQL_PACKAGE,
+    OPT_STRUCTURED_QUERY_SPEC,
+    OPT_STRUCTURED_QUERY_ID,
 
     OPT_SUMMARY,
     OPT_SUMMARY_METRICS_V2,
@@ -978,10 +1032,11 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
 
       {"query-file", required_argument, nullptr, 'q'},
       {"query-string", required_argument, nullptr, 'Q'},
-      {"add-sql-module", required_argument, nullptr, OPT_ADD_SQL_PACKAGE},
+      {"structured-query-spec", required_argument, nullptr,
+       OPT_STRUCTURED_QUERY_SPEC},
+      {"structured-query-id", required_argument, nullptr,
+       OPT_STRUCTURED_QUERY_ID},
       {"add-sql-package", required_argument, nullptr, OPT_ADD_SQL_PACKAGE},
-      {"override-sql-module", required_argument, nullptr,
-       OPT_OVERRIDE_SQL_PACKAGE},
       {"override-sql-package", required_argument, nullptr,
        OPT_OVERRIDE_SQL_PACKAGE},
 
@@ -1151,6 +1206,16 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
       continue;
     }
 
+    if (option == OPT_STRUCTURED_QUERY_SPEC) {
+      command_line_options.structured_query_specs.emplace_back(optarg);
+      continue;
+    }
+
+    if (option == OPT_STRUCTURED_QUERY_ID) {
+      command_line_options.structured_query_id = optarg;
+      continue;
+    }
+
     if (option == OPT_OVERRIDE_STDLIB) {
       command_line_options.override_stdlib_path = optarg;
       continue;
@@ -1216,11 +1281,13 @@ CommandLineOptions ParseCommandLineOptions(int argc, char** argv) {
   }
 
   command_line_options.launch_shell =
-      explicit_interactive || (command_line_options.metric_v1_names.empty() &&
-                               command_line_options.query_file_path.empty() &&
-                               command_line_options.query_string.empty() &&
-                               command_line_options.export_file_path.empty() &&
-                               !command_line_options.summary);
+      explicit_interactive ||
+      (command_line_options.metric_v1_names.empty() &&
+       command_line_options.query_file_path.empty() &&
+       command_line_options.query_string.empty() &&
+       command_line_options.structured_query_id.empty() &&
+       command_line_options.export_file_path.empty() &&
+       !command_line_options.summary);
 
   // Only allow non-interactive queries to emit perf data.
   if (!command_line_options.perf_file_path.empty() &&
@@ -1264,48 +1331,57 @@ void ExtendPoolWithBinaryDescriptor(
 }
 
 base::Status LoadTrace(TraceProcessor* trace_processor,
+                       TraceProcessorShell::PlatformInterface* platform,
                        const std::string& trace_file_path,
                        double* size_mb) {
-  base::Status read_status = ReadTraceUnfinalized(
-      trace_processor, trace_file_path.c_str(), [&size_mb](size_t parsed_size) {
+  base::Status load_status = platform->LoadTrace(
+      trace_processor, trace_file_path, [&size_mb](size_t parsed_size) {
         *size_mb = static_cast<double>(parsed_size) / 1E6;
         fprintf(stderr, "\rLoading trace: %.2f MB\r", *size_mb);
       });
-  if (!read_status.ok()) {
+  if (!load_status.ok()) {
     return base::ErrStatus("Could not read trace file (path: %s): %s",
-                           trace_file_path.c_str(), read_status.c_message());
+                           trace_file_path.c_str(), load_status.c_message());
   }
 
   bool is_proto_trace = false;
   {
     auto it = trace_processor->ExecuteQuery(
         "SELECT str_value FROM metadata WHERE name = 'trace_type'");
-    if (it.Next() && it.Get(0).type == SqlValue::kString) {
-      if (std::string_view(it.Get(0).AsString()) == "proto") {
+    while (it.Next()) {
+      if (it.Get(0).type == SqlValue::kString &&
+          std::string_view(it.Get(0).AsString()) == "proto") {
         is_proto_trace = true;
+        break;
       }
     }
   }
 
-  std::unique_ptr<profiling::Symbolizer> symbolizer =
-      profiling::MaybeLocalSymbolizer(profiling::GetPerfettoBinaryPath(), {},
-                                      getenv("PERFETTO_SYMBOLIZER_MODE"));
-  if (symbolizer) {
+  profiling::SymbolizerConfig sym_config;
+  const char* mode = getenv("PERFETTO_SYMBOLIZER_MODE");
+  std::vector<std::string> paths = profiling::GetPerfettoBinaryPath();
+  if (mode && std::string_view(mode) == "find") {
+    sym_config.find_symbol_paths = std::move(paths);
+  } else {
+    sym_config.index_symbol_paths = std::move(paths);
+  }
+  if (!sym_config.index_symbol_paths.empty() ||
+      !sym_config.find_symbol_paths.empty()) {
     if (is_proto_trace) {
       trace_processor->Flush();
-      profiling::SymbolizeDatabase(
-          trace_processor, symbolizer.get(),
-          [trace_processor](const std::string& trace_proto) {
-            std::unique_ptr<uint8_t[]> buf(new uint8_t[trace_proto.size()]);
-            memcpy(buf.get(), trace_proto.data(), trace_proto.size());
-            auto status =
-                trace_processor->Parse(std::move(buf), trace_proto.size());
-            if (!status.ok()) {
-              PERFETTO_DFATAL_OR_ELOG("Failed to parse: %s",
-                                      status.message().c_str());
-              return;
-            }
-          });
+      auto sym_result = profiling::SymbolizeDatabaseAndLog(
+          trace_processor, sym_config, /*verbose=*/false);
+      if (sym_result.error == profiling::SymbolizerError::kOk &&
+          !sym_result.symbols.empty()) {
+        std::unique_ptr<uint8_t[]> buf(new uint8_t[sym_result.symbols.size()]);
+        memcpy(buf.get(), sym_result.symbols.data(), sym_result.symbols.size());
+        auto status =
+            trace_processor->Parse(std::move(buf), sym_result.symbols.size());
+        if (!status.ok()) {
+          PERFETTO_DFATAL_OR_ELOG("Failed to parse: %s",
+                                  status.message().c_str());
+        }
+      }
     } else {
       // TODO(lalitm): support symbolization for non-proto traces.
       PERFETTO_ELOG("Skipping symbolization for non-proto trace");
@@ -1349,7 +1425,10 @@ base::Status RunQueriesFromFile(TraceProcessor* trace_processor,
                                 bool expect_output) {
   std::string queries;
   if (!base::ReadFile(query_file_path, &queries)) {
-    return base::ErrStatus("Unable to read file %s", query_file_path.c_str());
+    return base::ErrStatus(
+        "Unable to read file %s. If you're passing an SQL query, did you mean "
+        "to use the -Q flag instead?",
+        query_file_path.c_str());
   }
   return RunQueries(trace_processor, queries, expect_output);
 }
@@ -1417,24 +1496,49 @@ base::Status ParseMetricExtensionPaths(
   return CheckForDuplicateMetricExtension(metric_extensions);
 }
 
+// Parses PATH[@PACKAGE] syntax for --add-sql-package flag.
+// Returns the path portion and sets |out_package| to the package name
+// (or empty string if not specified, meaning use directory name).
+//
+// Examples:
+//   "./my_modules"        -> path="./my_modules", package=""
+//   "./my_modules@foo"    -> path="./my_modules", package="foo"
+//   "/tmp/sql@my.pkg"     -> path="/tmp/sql", package="my.pkg"
+std::string ParsePackagePath(const std::string& arg, std::string* out_package) {
+  size_t at_pos = arg.rfind('@');
+  if (at_pos != std::string::npos) {
+    *out_package = arg.substr(at_pos + 1);
+    return arg.substr(0, at_pos);
+  }
+  *out_package = "";
+  return arg;
+}
+
 base::Status IncludeSqlPackage(TraceProcessor* trace_processor,
-                               std::string root,
+                               const std::string& path_arg,
                                bool allow_override) {
+  std::string explicit_package;
+  std::string root = ParsePackagePath(path_arg, &explicit_package);
+
   // Remove trailing slash
-  if (root.back() == '/')
+  if (!root.empty() && root.back() == '/')
     root.resize(root.length() - 1);
 
   if (!base::FileExists(root))
     return base::ErrStatus("Directory %s does not exist.", root.c_str());
 
-  // Get package name
-  size_t last_slash = root.rfind('/');
-  if (last_slash == std::string::npos) {
-    return base::ErrStatus("Package path must point to a directory: %s",
-                           root.c_str());
+  // Get package name: use explicit package if provided, otherwise dirname
+  std::string package_name;
+  if (!explicit_package.empty()) {
+    package_name = explicit_package;
+  } else {
+    size_t last_slash = root.rfind('/');
+    if (last_slash == std::string::npos) {
+      return base::ErrStatus("Package path must point to a directory: %s",
+                             root.c_str());
+    }
+    package_name = root.substr(last_slash + 1);
   }
-
-  std::string package_name = root.substr(last_slash + 1);
 
   std::vector<std::string> paths;
   RETURN_IF_ERROR(base::ListFilesRecursive(root, paths));
@@ -1843,7 +1947,7 @@ base::Status RegisterAllFilesInFolder(const std::string& path,
   RETURN_IF_ERROR(base::ListFilesRecursive(path, files));
   for (const std::string& file : files) {
     std::string file_full_path = path + "/" + file;
-    base::ScopedMmap mmap = base::ReadMmapWholeFile(file_full_path.c_str());
+    base::ScopedMmap mmap = base::ReadMmapWholeFile(file_full_path);
     if (!mmap.IsValid()) {
       return base::ErrStatus("Failed to mmap file: %s", file_full_path.c_str());
     }
@@ -1884,10 +1988,49 @@ TraceSummaryOutputSpec::Format GetSummaryOutputFormat(
   exit(1);
 }
 
-base::Status TraceProcessorMain(int argc, char** argv) {
+class DefaultPlatformInterface : public TraceProcessorShell::PlatformInterface {
+ public:
+  ~DefaultPlatformInterface() override;
+
+  Config DefaultConfig() const override { return {}; }
+
+  base::Status OnTraceProcessorCreated(TraceProcessor*) override {
+    return base::OkStatus();
+  }
+
+  base::Status LoadTrace(
+      TraceProcessor* trace_processor,
+      const std::string& path,
+      std::function<void(size_t)> progress_callback) override {
+    return ReadTraceUnfinalized(trace_processor, path.c_str(),
+                                progress_callback);
+  }
+};
+
+DefaultPlatformInterface::~DefaultPlatformInterface() = default;
+
+}  // namespace
+
+TraceProcessorShell::TraceProcessorShell(
+    std::unique_ptr<PlatformInterface> platform_interface)
+    : platform_interface_(std::move(platform_interface)) {}
+
+std::unique_ptr<TraceProcessorShell> TraceProcessorShell::Create(
+    std::unique_ptr<PlatformInterface> platform_interface) {
+  return std::unique_ptr<TraceProcessorShell>(
+      new TraceProcessorShell(std::move(platform_interface)));
+}
+
+std::unique_ptr<TraceProcessorShell>
+TraceProcessorShell::CreateWithDefaultPlatform() {
+  return std::unique_ptr<TraceProcessorShell>(
+      new TraceProcessorShell(std::make_unique<DefaultPlatformInterface>()));
+}
+
+base::Status TraceProcessorShell::Run(int argc, char** argv) {
   CommandLineOptions options = ParseCommandLineOptions(argc, argv);
 
-  Config config;
+  Config config = platform_interface_->DefaultConfig();
   config.sorting_mode = options.force_full_sort
                             ? SortingMode::kForceFullSort
                             : SortingMode::kDefaultHeuristics;
@@ -1923,6 +2066,7 @@ base::Status TraceProcessorMain(int argc, char** argv) {
   }
 
   std::unique_ptr<TraceProcessor> tp = TraceProcessor::CreateInstance(config);
+  platform_interface_->OnTraceProcessorCreated(tp.get());
   RETURN_IF_ERROR(MaybeUpdateSqlPackages(tp.get(), options));
 
   // Enable metatracing as soon as possible.
@@ -1958,7 +2102,8 @@ base::Status TraceProcessorMain(int argc, char** argv) {
   if (!options.trace_file_path.empty()) {
     base::TimeNanos t_load_start = base::GetWallTimeNs();
     double size_mb = 0;
-    RETURN_IF_ERROR(LoadTrace(tp.get(), options.trace_file_path, &size_mb));
+    RETURN_IF_ERROR(LoadTrace(tp.get(), platform_interface_.get(),
+                              options.trace_file_path, &size_mb));
     t_load = base::GetWallTimeNs() - t_load_start;
 
     double t_load_s = static_cast<double>(t_load.count()) / 1E9;
@@ -2063,6 +2208,44 @@ base::Status TraceProcessorMain(int argc, char** argv) {
     }
   }
 
+  if (!options.structured_query_id.empty()) {
+    // Load spec files.
+    std::vector<std::string> spec_content;
+    spec_content.reserve(options.structured_query_specs.size());
+    for (const auto& s : options.structured_query_specs) {
+      spec_content.emplace_back();
+      if (!base::ReadFile(s, &spec_content.back())) {
+        return base::ErrStatus("Unable to read structured query spec file %s",
+                               s.c_str());
+      }
+    }
+
+    // Convert to TraceSummarySpecBytes.
+    std::vector<TraceSummarySpecBytes> specs;
+    specs.reserve(options.structured_query_specs.size());
+    for (uint32_t i = 0; i < options.structured_query_specs.size(); ++i) {
+      specs.emplace_back(TraceSummarySpecBytes{
+          reinterpret_cast<const uint8_t*>(spec_content[i].data()),
+          spec_content[i].size(),
+          GuessSummarySpecFormat(options.structured_query_specs[i],
+                                 spec_content[i]),
+      });
+    }
+
+    // Execute the structured query.
+    std::string output;
+    base::Status status = summary::ExecuteStructuredQuery(
+        tp.get(), specs, options.structured_query_id, &output);
+    if (!status.ok()) {
+      // Write metatrace if needed before exiting.
+      RETURN_IF_ERROR(MaybeWriteMetatrace(tp.get(), options.metatrace_path));
+      return status;
+    }
+
+    // Print the result.
+    fprintf(stdout, "%s", output.c_str());
+  }
+
   base::TimeNanos t_query = base::GetWallTimeNs() - t_query_start;
 
   if (!options.export_file_path.empty()) {
@@ -2071,7 +2254,10 @@ base::Status TraceProcessorMain(int argc, char** argv) {
 
   if (options.enable_httpd) {
 #if PERFETTO_BUILDFLAG(PERFETTO_TP_HTTPD)
-    Rpc rpc(std::move(tp), !options.trace_file_path.empty());
+    Rpc rpc(std::move(tp), !options.trace_file_path.empty(), config,
+            [this](TraceProcessor* tp) {
+              platform_interface_->OnTraceProcessorCreated(tp);
+            });
 
 #if PERFETTO_HAS_SIGNAL_H()
     static Rpc* g_rpc_for_signal_handler = &rpc;
@@ -2102,7 +2288,10 @@ base::Status TraceProcessorMain(int argc, char** argv) {
   }
 
   if (options.enable_stdiod) {
-    Rpc rpc(std::move(tp), !options.trace_file_path.empty());
+    Rpc rpc(std::move(tp), !options.trace_file_path.empty(), config,
+            [this](TraceProcessor* tp) {
+              platform_interface_->OnTraceProcessorCreated(tp);
+            });
 #if PERFETTO_HAS_SIGNAL_H()
     static Rpc* g_rpc_for_signal_handler = &rpc;
     g_tp_for_signal_handler = nullptr;
@@ -2126,15 +2315,7 @@ base::Status TraceProcessorMain(int argc, char** argv) {
   return base::OkStatus();
 }
 
-}  // namespace
+TraceProcessorShell_PlatformInterface::
+    ~TraceProcessorShell_PlatformInterface() = default;
 
 }  // namespace perfetto::trace_processor
-
-int main(int argc, char** argv) {
-  auto status = perfetto::trace_processor::TraceProcessorMain(argc, argv);
-  if (!status.ok()) {
-    fprintf(stderr, "%s\n", status.c_message());
-    return 1;
-  }
-  return 0;
-}

@@ -233,19 +233,11 @@ class BASE_EXPORT File {
 
   // Reads the given number of bytes (or until EOF is reached) starting with the
   // given offset, but does not make any effort to read all data on all
-  // platforms. Returns the number of bytes read, or -1/std::nullopt on error.
-  // PRECONDITIONS: `size` must be non-negative and `data` must point to at
-  // least `size` valid bytes.
-  UNSAFE_BUFFER_USAGE int ReadNoBestEffort(int64_t offset,
-                                           char* data,
-                                           int size);
+  // platforms. Returns the number of bytes read, or std::nullopt on error.
   std::optional<size_t> ReadNoBestEffort(int64_t offset,
                                          base::span<uint8_t> data);
 
   // Same as above but without seek.
-  // PRECONDITIONS: `size` must be non-negative and `data` must point to at
-  // least `size` valid bytes.
-  UNSAFE_BUFFER_USAGE int ReadAtCurrentPosNoBestEffort(char* data, int size);
   std::optional<size_t> ReadAtCurrentPosNoBestEffort(base::span<uint8_t> data);
 
   // Simplified versions of Write() and friends (see below) that check the
@@ -272,12 +264,8 @@ class BASE_EXPORT File {
   std::optional<size_t> WriteAtCurrentPos(base::span<const uint8_t> data);
 
   // Same as above but does not make any effort to write all data on all
-  // platforms. Returns the number of bytes written, or -1/std::nullopt
+  // platforms. Returns the number of bytes written, or std::nullopt
   // on error.
-  // PRECONDITIONS: `size` must be non-negative and `data` must point to at
-  // least `size` valid bytes.
-  UNSAFE_BUFFER_USAGE int WriteAtCurrentPosNoBestEffort(const char* data,
-                                                        int size);
   std::optional<size_t> WriteAtCurrentPosNoBestEffort(
       base::span<const uint8_t> data);
 

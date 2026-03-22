@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 // Its purpose is to preempt the Libc symbols for malloc/new so they call the
 // shim layer entry points.
 
@@ -29,12 +24,6 @@
 #endif
 
 #include "partition_alloc/shim/allocator_shim_internals.h"
-
-// Musl does not specify anything for malloc() etc.
-#if defined(__MUSL__)
-#undef __THROW
-#define __THROW
-#endif
 
 extern "C" {
 

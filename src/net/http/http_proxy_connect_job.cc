@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
-#include <set>
 #include <utility>
 #include <variant>
 
@@ -16,6 +15,7 @@
 #include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/task/single_thread_task_runner.h"
@@ -341,14 +341,6 @@ void HttpProxyConnectJob::OnNeedsProxyAuth(
   NOTREACHED();
 }
 
-Error HttpProxyConnectJob::OnDestinationDnsAliasesResolved(
-    const std::set<std::string>& aliases,
-    ConnectJob* job) {
-  // Do nothing and return OK when DNS aliases for HTTP proxy hostnames since
-  // higher-level layers will not take action on these.
-  return OK;
-}
-
 base::TimeDelta HttpProxyConnectJob::AlternateNestedConnectionTimeout(
     const HttpProxySocketParams& params,
     const NetworkQualityEstimator* network_quality_estimator) {
@@ -504,17 +496,9 @@ int HttpProxyConnectJob::DoBeginConnect() {
 int HttpProxyConnectJob::DoTransportConnect() {
   ProxyServer::Scheme scheme = GetProxyServerScheme();
   if (scheme == ProxyServer::SCHEME_HTTP) {
-    if (params_->is_over_transport()) {
-      nested_connect_job_ = std::make_unique<TransportConnectJob>(
-          priority(), socket_tag(), common_connect_job_params(),
-          params_->transport_params(), this, &net_log());
-    } else if (params_->is_over_http()) {
-      nested_connect_job_ = std::make_unique<HttpProxyConnectJob>(
-          priority(), socket_tag(), common_connect_job_params(),
-          params_->http_params(), this, &net_log());
-    } else {
-      CHECK(false) << "Invalid nested connect job";
-    }
+    nested_connect_job_ = std::make_unique<TransportConnectJob>(
+        priority(), socket_tag(), common_connect_job_params(),
+        params_->transport_params(), this, &net_log());
   } else {
     DCHECK_EQ(scheme, ProxyServer::SCHEME_HTTPS);
     DCHECK(params_->is_over_ssl());

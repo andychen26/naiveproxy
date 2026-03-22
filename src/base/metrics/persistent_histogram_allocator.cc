@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <limits>
+#include <memory>
 #include <string_view>
 #include <utility>
 
@@ -57,10 +58,8 @@ enum : uint32_t {
 // but that's best since PersistentMemoryAllocator objects (that underlie
 // GlobalHistogramAllocator objects) are explicitly forbidden from doing
 // anything essential at exit anyway due to the fact that they depend on data
-// managed elsewhere and which could be destructed first. An AtomicWord is
-// used instead of std::atomic because the latter can create global ctors
-// and dtors.
-subtle::AtomicWord g_histogram_allocator = 0;
+// managed elsewhere and which could be destructed first.
+std::atomic<GlobalHistogramAllocator*> g_histogram_allocator;
 
 // Calculate the number of bytes required to store all of a histogram's
 // "counts". This will return zero (0) if `bucket_count` is not valid.
@@ -776,7 +775,7 @@ bool GlobalHistogramAllocator::CreateWithFile(const FilePath& file_path,
     return false;
   }
 
-  std::unique_ptr<MemoryMappedFile> mmfile(new MemoryMappedFile());
+  auto mmfile = std::make_unique<MemoryMappedFile>();
   bool success = false;
   const bool file_created = file.created();
   if (file_created) {
@@ -973,9 +972,8 @@ void GlobalHistogramAllocator::Set(GlobalHistogramAllocator* allocator) {
   // Releasing or changing an allocator is extremely dangerous because it
   // likely has histograms stored within it. If the backing memory is also
   // also released, future accesses to those histograms will seg-fault.
-  CHECK(!subtle::NoBarrier_Load(&g_histogram_allocator));
-  subtle::Release_Store(&g_histogram_allocator,
-                        reinterpret_cast<intptr_t>(allocator));
+  CHECK(!g_histogram_allocator.load(std::memory_order_relaxed));
+  g_histogram_allocator.store(allocator, std::memory_order_release);
 
   // Record the number of histograms that were sampled before the global
   // histogram allocator was initialized.
@@ -999,8 +997,7 @@ void GlobalHistogramAllocator::Set(GlobalHistogramAllocator* allocator) {
 
 // static
 GlobalHistogramAllocator* GlobalHistogramAllocator::Get() {
-  return reinterpret_cast<GlobalHistogramAllocator*>(
-      subtle::Acquire_Load(&g_histogram_allocator));
+  return g_histogram_allocator.load(std::memory_order_acquire);
 }
 
 // static
@@ -1021,7 +1018,7 @@ GlobalHistogramAllocator* GlobalHistogramAllocator::ReleaseForTesting() {
     StatisticsRecorder::ForgetHistogramForTesting(data->name);
   }
 
-  subtle::Release_Store(&g_histogram_allocator, 0);
+  g_histogram_allocator.store(nullptr, std::memory_order_release);
   ANNOTATE_LEAKING_OBJECT_PTR(histogram_allocator);
   return histogram_allocator;
 }

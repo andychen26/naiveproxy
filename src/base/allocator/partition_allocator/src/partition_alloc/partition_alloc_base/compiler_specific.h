@@ -139,7 +139,7 @@
 //     PA_MUSTTAIL return Func1(d + 1);  // `Func1()` will be tail-called.
 //   }
 // ```
-#if PA_HAS_CPP_ATTRIBUTE(clang::musttail) && !defined(__MIPSEL__)
+#if PA_HAS_CPP_ATTRIBUTE(clang::musttail)
 #define PA_MUSTTAIL [[clang::musttail]]
 #else
 #define PA_MUSTTAIL

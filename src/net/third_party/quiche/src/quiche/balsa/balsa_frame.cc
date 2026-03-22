@@ -400,6 +400,16 @@ void BalsaFrame::ProcessFirstLine(char* begin, char* end) {
       headers_->whitespace_4_idx_ - headers_->non_whitespace_3_idx_);
 
   if (is_request_) {
+    const bool is_method_valid = header_properties::IsValidToken(part1);
+    if (http_validation_policy().disallow_invalid_request_methods &&
+        !is_method_valid) {
+      QUICHE_CODE_COUNT(disallow_invalid_request_methods_enforced);
+      parse_state_ = BalsaFrameEnums::ERROR;
+      last_error_ = BalsaFrameEnums::INVALID_REQUEST_METHOD;
+      HandleError(last_error_);
+      return;
+    }
+
     is_valid_target_uri_ = IsValidTargetUri(part1, part2);
     if (http_validation_policy().disallow_invalid_target_uris &&
         !is_valid_target_uri_) {
@@ -1062,55 +1072,6 @@ size_t BalsaFrame::ProcessHeaders(const char* message_start,
     headers_->WriteFromFramer(checkpoint, message_current - checkpoint);
   }
   return message_current - original_message_start;
-}
-
-size_t BalsaFrame::BytesSafeToSplice() const {
-  switch (parse_state_) {
-    case BalsaFrameEnums::READING_CHUNK_DATA:
-      return chunk_length_remaining_;
-    case BalsaFrameEnums::READING_UNTIL_CLOSE:
-      return std::numeric_limits<size_t>::max();
-    case BalsaFrameEnums::READING_CONTENT:
-      return content_length_remaining_;
-    default:
-      return 0;
-  }
-}
-
-void BalsaFrame::BytesSpliced(size_t bytes_spliced) {
-  switch (parse_state_) {
-    case BalsaFrameEnums::READING_CHUNK_DATA:
-      if (chunk_length_remaining_ < bytes_spliced) {
-        HandleError(BalsaFrameEnums::
-                        CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT);
-        return;
-      }
-      chunk_length_remaining_ -= bytes_spliced;
-      if (chunk_length_remaining_ == 0) {
-        parse_state_ = BalsaFrameEnums::READING_CHUNK_TERM;
-      }
-      return;
-
-    case BalsaFrameEnums::READING_UNTIL_CLOSE:
-      return;
-
-    case BalsaFrameEnums::READING_CONTENT:
-      if (content_length_remaining_ < bytes_spliced) {
-        HandleError(BalsaFrameEnums::
-                        CALLED_BYTES_SPLICED_AND_EXCEEDED_SAFE_SPLICE_AMOUNT);
-        return;
-      }
-      content_length_remaining_ -= bytes_spliced;
-      if (content_length_remaining_ == 0) {
-        parse_state_ = BalsaFrameEnums::MESSAGE_FULLY_READ;
-        visitor_->MessageDone();
-      }
-      return;
-
-    default:
-      HandleError(BalsaFrameEnums::CALLED_BYTES_SPLICED_WHEN_UNSAFE_TO_DO_SO);
-      return;
-  }
 }
 
 size_t BalsaFrame::ProcessInput(const char* input, size_t size) {

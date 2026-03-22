@@ -132,7 +132,7 @@ namespace base {
 // The class ThreadCollisionWarner uses an Asserter to notify the collision
 // AsserterBase is the interfaces and DCheckAsserter is the default asserter
 // used. During the unit tests is used another class that doesn't "DCHECK"
-// in case of collision (check thread_collision_warner_unittests.cc)
+// in case of collision (check thread_collision_warner_unittest.cc)
 struct BASE_EXPORT AsserterBase {
   virtual ~AsserterBase() = default;
   virtual void warn() = 0;
@@ -225,6 +225,7 @@ class BASE_EXPORT ThreadCollisionWarner {
   // This stores the thread id that is inside the critical section, if the
   // value is 0 then no thread is inside.
   std::atomic<PlatformThreadId> valid_thread_id_;
+  static_assert(std::atomic<PlatformThreadId>::is_always_lock_free, "");
 
   // Counter to trace how many time a critical section was "pinned"
   // (when allowed) in order to unpin it when counter_ reaches 0.

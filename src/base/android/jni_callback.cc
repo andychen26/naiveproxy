@@ -26,7 +26,7 @@ class JniOnceCallback {
     bool is_repeating = false;
     return Java_JniCallbackImpl_Constructor(
         env, is_repeating,
-        reinterpret_cast<jlong>(wrapped_callback_.release()));
+        reinterpret_cast<int64_t>(wrapped_callback_.release()));
   }
 
  private:
@@ -50,7 +50,7 @@ class JniRepeatingCallback {
     bool is_repeating = true;
     return Java_JniCallbackImpl_Constructor(
         env, is_repeating,
-        reinterpret_cast<jlong>(wrapped_callback_.release()));
+        reinterpret_cast<int64_t>(wrapped_callback_.release()));
   }
   JniRepeatingCallback(const JniRepeatingCallback&) = delete;
   const JniRepeatingCallback& operator=(const JniRepeatingCallback&) = delete;
@@ -107,11 +107,11 @@ ScopedJavaLocalRef<jobject> ToJniCallback(
                std::move(callback)));
 }
 
-void JNI_JniCallbackImpl_OnResult(
+static void JNI_JniCallbackImpl_OnResult(
     JNIEnv* env,
-    jboolean isRepeating,
-    jlong callbackPtr,
-    const jni_zero::JavaParamRef<jobject>& j_result) {
+    bool isRepeating,
+    int64_t callbackPtr,
+    const jni_zero::JavaRef<jobject>& j_result) {
   if (isRepeating) {
     auto* callback =
         reinterpret_cast<JniRepeatingWrappedCallbackType*>(callbackPtr);
@@ -123,9 +123,9 @@ void JNI_JniCallbackImpl_OnResult(
   }
 }
 
-void JNI_JniCallbackImpl_Destroy(JNIEnv* env,
-                                 jboolean isRepeating,
-                                 jlong callbackPtr) {
+static void JNI_JniCallbackImpl_Destroy(JNIEnv* env,
+                                        bool isRepeating,
+                                        int64_t callbackPtr) {
   if (isRepeating) {
     auto* callback =
         reinterpret_cast<JniRepeatingWrappedCallbackType*>(callbackPtr);
@@ -142,4 +142,4 @@ void JNI_JniCallbackImpl_Destroy(JNIEnv* env,
 
 }  // namespace base::android
 
-DEFINE_JNI_FOR_JniCallbackImpl()
+DEFINE_JNI(JniCallbackImpl)

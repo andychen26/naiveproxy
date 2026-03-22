@@ -2,11 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifdef UNSAFE_BUFFERS_BUILD
-// TODO(crbug.com/40284755): Remove this and spanify to fix the errors.
-#pragma allow_unsafe_buffers
-#endif
-
 #include "base/trace_event/malloc_dump_provider.h"
 
 #include <stddef.h>
@@ -14,6 +9,7 @@
 #include <unordered_map>
 
 #include "base/allocator/buildflags.h"
+#include "base/compiler_specific.h"
 #include "base/debug/profiler.h"
 #include "base/format_macros.h"
 #include "base/metrics/histogram_functions.h"
@@ -180,7 +176,7 @@ void ReportAppleAllocStats(size_t* total_virtual_size,
 
 #if (PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && BUILDFLAG(IS_ANDROID)) || \
     (!PA_BUILDFLAG(USE_PARTITION_ALLOC_AS_MALLOC) && !BUILDFLAG(IS_WIN) &&    \
-     !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_FUCHSIA) && !defined(__MUSL__))
+     !BUILDFLAG(IS_APPLE) && !BUILDFLAG(IS_FUCHSIA))
 void ReportMallinfoStats(ProcessMemoryDump* pmd,
                          size_t* total_virtual_size,
                          size_t* resident_size,
@@ -383,7 +379,6 @@ bool MallocDumpProvider::OnMemoryDump(const MemoryDumpArgs& args,
                      &allocated_objects_count);
 #elif BUILDFLAG(IS_FUCHSIA)
 // TODO(fuchsia): Port, see https://crbug.com/706592.
-#elif defined(__MUSL__)
 #else
   ReportMallinfoStats(/*pmd=*/nullptr, &total_virtual_size, &resident_size,
                       &allocated_objects_size, &allocated_objects_count);

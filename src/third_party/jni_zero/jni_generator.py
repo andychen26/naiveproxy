@@ -4,12 +4,14 @@
 """Entry point for "from-source" and "from-jar" commands."""
 
 import collections
+import dataclasses
 import os
 import pickle
 import shutil
 import subprocess
 import sys
 import tempfile
+from typing import Optional
 import zipfile
 
 from codegen import called_by_native_header
@@ -46,6 +48,7 @@ class NativeMethod:
         and proxy.needs_implicit_array_element_class_param(self.return_type))
 
     if self.is_proxy:
+      class_without_prefix = java_class.class_without_prefix
       # Signature with all reference types changed to "Object".
       self.proxy_signature = self.signature.to_proxy()
       if self.needs_implicit_array_element_class_param:
@@ -58,11 +61,12 @@ class NativeMethod:
       # "native" prefix to not conflict with interface method names.
       self.per_file_name = f'native{self.capitalized_name}'
       # Method name within the GEN_JNI class.
-      self.proxy_name = f'{java_class.to_cpp()}_{self.name}'
+      self.proxy_name = f'{class_without_prefix.to_cpp()}_{self.name}'
       # Method name within the J class (when is_hashing=True).
       # TODO(agrieve): No need to mangle before hashing.
       self.hashed_name = proxy.hashed_name(
-          common.jni_mangle(f'{java_class.full_name_with_slashes}/{self.name}'),
+          common.jni_mangle(
+              f'{class_without_prefix.full_name_with_slashes}/{self.name}'),
           self.is_test_only)
       # Method name within the J class (when is_muxing=True).
       self.muxed_name = proxy.muxed_name(self.muxed_signature)
@@ -172,6 +176,16 @@ class CalledByNative:
     return self.signature.param_list
 
 
+@dataclasses.dataclass
+class Field:
+  name: str
+  java_type: java_types.JavaType
+  static: bool
+  final: bool
+  is_system_class: bool
+  const_value: Optional[str] = None
+
+
 def NameIsTestOnly(name):
   return name.endswith(('ForTest', 'ForTests', 'ForTesting'))
 
@@ -234,7 +248,15 @@ class JniObject:
     self.module_name = parsed_file.module_name
     self.proxy_interface = parsed_file.proxy_interface
     self.proxy_visibility = parsed_file.proxy_visibility
-    self.constant_fields = parsed_file.constant_fields
+    self.fields = [
+        Field(name=f.name,
+              java_type=f.java_type,
+              static=f.static,
+              final=f.final,
+              is_system_class=from_javap,
+              const_value=f.const_value if f.java_type.is_primitive() else None)
+        for f in parsed_file.fields
+    ]
 
     # These are different only for legacy reasons.
     if from_javap:
@@ -243,17 +265,17 @@ class JniObject:
     else:
       self.jni_namespace = parsed_file.jni_namespace or default_namespace
 
-    natives = []
-    for parsed_method in parsed_file.proxy_methods:
-      natives.append(
-          NativeMethod(parsed_method, java_class=self.java_class,
-                       is_proxy=True))
+    natives = [
+        NativeMethod(m, java_class=self.java_class, is_proxy=True)
+        for m in parsed_file.proxy_methods
+    ]
+    # Natives are already sorted by name, but we want ForTesting methods to
+    # come at the end so that they do not contribute to switch number ordering.
+    natives.sort(key=lambda n: n.is_test_only)
 
-    for parsed_method in parsed_file.non_proxy_methods:
-      natives.append(
-          NativeMethod(parsed_method,
-                       java_class=self.java_class,
-                       is_proxy=False))
+    natives.extend(
+        NativeMethod(m, java_class=self.java_class, is_proxy=False)
+        for m in parsed_file.non_proxy_methods)
 
     self.natives = natives
 
@@ -320,10 +342,14 @@ def _CollectReferencedClasses(jni_obj):
 def _generate_header(jni_mode,
                      jni_obj,
                      gen_jni_class,
+                     output_file,
                      *,
                      enable_definition_macros,
                      include_path_prefix,
-                     extra_includes=None):
+                     extra_includes=None,
+                     add_natives_macro_definition=True):
+  if os.path.isabs(output_file):
+    output_file = os.path.basename(output_file)
   user_includes = [f'{include_path_prefix}jni_zero_internal.h']
   if extra_includes:
     user_includes += extra_includes
@@ -335,23 +361,39 @@ def _generate_header(jni_mode,
   sb = common.StringBuilder()
   sb(preamble)
 
-  natives_header.natives_macro_definition(
-      sb,
-      jni_mode,
-      jni_obj,
-      gen_jni_class,
-      enable_definition_macros=enable_definition_macros)
+  if add_natives_macro_definition:
+    natives_header.natives_macro_definition(
+        sb,
+        jni_mode,
+        jni_obj,
+        gen_jni_class,
+        output_file,
+        enable_definition_macros=enable_definition_macros)
 
   java_classes = _CollectReferencedClasses(jni_obj)
   if java_classes:
     with sb.section('Class Accessors'):
       header_common.class_accessors(sb, java_classes, jni_obj.module_name)
 
+  if jni_obj.fields:
+    non_const_fields = [f for f in jni_obj.fields if f.const_value is None]
+    if non_const_fields:
+      with sb.section('FieldId Accessors'):
+        sb('#pragma clang diagnostic push\n')
+        sb('#pragma clang diagnostic ignored "-Wunique-object-duplication"\n')
+        called_by_native_header.field_accessors(sb, jni_obj.java_class,
+                                                non_const_fields)
+        sb('#pragma clang diagnostic pop\n')
+
   with sb.namespace(jni_obj.jni_namespace):
-    if jni_obj.constant_fields:
+    constant_fields = [
+        f for f in jni_obj.fields
+        if f.const_value and f.java_type == java_types.INT
+    ]
+    if constant_fields:
       with sb.section('Constants'):
         called_by_native_header.constants_enums(sb, jni_obj.java_class,
-                                                jni_obj.constant_fields)
+                                                constant_fields)
 
     if jni_obj.natives and not enable_definition_macros:
       with sb.section('Java to native functions'):
@@ -361,12 +403,18 @@ def _generate_header(jni_mode,
                                             jni_obj,
                                             native,
                                             gen_jni_class,
+                                            output_file,
                                             include_forward_declaration=True)
 
-    if jni_obj.called_by_natives:
+    if jni_obj.called_by_natives or jni_obj.fields:
       with sb.section('Native to Java functions'):
         for called_by_native in jni_obj.called_by_natives:
           called_by_native_header.method_definition(sb, called_by_native)
+      if jni_obj.fields:
+        with sb.section('Field Accessors'):
+          for field in jni_obj.fields:
+            called_by_native_header.field_definition(sb, jni_obj.java_class,
+                                                     field)
 
   sb(epilogue)
   return sb.to_string()
@@ -521,16 +569,23 @@ def _WriteHeaders(jni_mode,
                   include_path_prefix,
                   gen_jni_class=None,
                   enable_definition_macros=False,
-                  extra_includes=None):
+                  extra_includes=None,
+                  add_natives_macro_definition=True):
+  if not enable_definition_macros:
+    java_types.CPP_UNDERLYING_TYPE_BY_JAVA_TYPE = \
+        java_types.CPP_TYPE_BY_JAVA_TYPE
+
   for jni_obj, header_name in zip(jni_objs, output_names):
     output_file = os.path.join(output_dir, header_name)
     content = _generate_header(
         jni_mode,
         jni_obj,
         gen_jni_class,
+        output_file,
         enable_definition_macros=enable_definition_macros,
         include_path_prefix=include_path_prefix,
-        extra_includes=extra_includes)
+        extra_includes=extra_includes,
+        add_natives_macro_definition=add_natives_macro_definition)
 
     with common.atomic_output(output_file, 'w') as f:
       f.write(content)
@@ -630,4 +685,5 @@ def GenerateFromJar(parser, args, jni_mode):
                 args.output_names,
                 args.output_dir,
                 include_path_prefix=args.include_path_prefix,
-                extra_includes=args.extra_includes)
+                extra_includes=args.extra_includes,
+                add_natives_macro_definition=False)
